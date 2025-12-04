@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
+from ai.tools import access_camera
 
 load_dotenv()
 
@@ -38,8 +39,14 @@ def generate_chat_stream(message: str, history: List[Message]) -> Generator[str,
                 parts=[types.Part.from_text(text=msg.content)]
             ))
 
+        # Configure tools
+        config = types.GenerateContentConfig(
+            tools=[access_camera],
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=False)
+        )
+
         # Create chat session
-        chat = client.chats.create(model=MODEL_ID, history=chat_history)
+        chat = client.chats.create(model=MODEL_ID, history=chat_history, config=config)
         
         # Send message and stream response
         response = chat.send_message_stream(message)

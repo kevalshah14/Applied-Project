@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
+import CameraStream from '../components/CameraStream'
 
 interface Message {
   id: string
@@ -110,6 +111,14 @@ export default function ChatInterface() {
     }
   }
 
+  const handleCloseStream = (messageId: string) => {
+    setMessages(prev => prev.map(msg => 
+      msg.id === messageId 
+        ? { ...msg, text: msg.text.replace('![Camera Stream](stream)', '[CAMERA_CLOSED]') }
+        : msg
+    ))
+  }
+
   return (
     <div className="flex flex-col h-screen relative overflow-hidden">
       
@@ -122,56 +131,86 @@ export default function ChatInterface() {
           >
             <div className="flex items-end space-x-3 max-w-xs lg:max-w-lg xl:max-w-xl">
               {message.sender === 'robot' && (
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 rounded-full flex items-center justify-center flex-shrink-0 shadow-xl ring-2 ring-white/60 ring-offset-1 ring-offset-slate-100/20 animate-pulse">
-                  <span className="text-white text-sm drop-shadow-sm">🤖</span>
+                <div className="flex flex-col gap-2 w-full">
+                  <div className="flex items-end space-x-3 max-w-xs lg:max-w-lg xl:max-w-xl">
+                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 rounded-full flex items-center justify-center flex-shrink-0 shadow-xl ring-2 ring-white/60 ring-offset-1 ring-offset-slate-100/20 animate-pulse">
+                      <span className="text-white text-sm drop-shadow-sm">🤖</span>
+                    </div>
+                    <div
+                      className="px-5 py-4 rounded-2xl backdrop-blur-xl border transition-all duration-500 hover:scale-[1.02] hover:-translate-y-0.5 group max-w-full overflow-hidden bg-gradient-to-br from-white/90 via-white/80 to-white/70 text-slate-800 border-white/60 rounded-bl-md shadow-xl shadow-blue-500/10 ring-1 ring-blue-500/20"
+                    >
+                      <div className="leading-relaxed font-medium tracking-wide break-words whitespace-pre-wrap text-sm">
+                        <ReactMarkdown
+                          components={{
+                            p: ({children}) => <p className="mb-0.5 last:mb-0 leading-relaxed">{children}</p>,
+                            code: ({children}) => <code className="px-1 py-0.5 rounded text-xs font-mono bg-slate-200">{children}</code>,
+                            pre: ({children}) => <pre className="p-1.5 rounded-md overflow-x-auto text-xs font-mono mb-0.5 break-words bg-slate-100">{children}</pre>,
+                            ul: ({children}) => <ul className="mb-0.5 last:mb-0 ml-2 list-disc space-y-0">{children}</ul>,
+                            ol: ({children}) => <ol className="mb-0.5 last:mb-0 ml-2 list-decimal space-y-0">{children}</ol>,
+                            li: ({children}) => <li>{children}</li>,
+                            blockquote: ({children}) => <blockquote className="border-l-2 pl-2 italic my-0.5 border-slate-300">{children}</blockquote>,
+                            h1: ({children}) => <h1 className="text-lg font-bold mb-0.5 mt-1 first:mt-0">{children}</h1>,
+                            h2: ({children}) => <h2 className="text-base font-bold mb-0.5 mt-0.5 first:mt-0">{children}</h2>,
+                            h3: ({children}) => <h3 className="text-sm font-bold mb-0 mt-0.5 first:mt-0">{children}</h3>,
+                            h4: ({children}) => <h4 className="text-sm font-semibold mb-0 mt-0.5 first:mt-0">{children}</h4>,
+                            h5: ({children}) => <h5 className="text-xs font-semibold mb-0 mt-0 first:mt-0">{children}</h5>,
+                            h6: ({children}) => <h6 className="text-xs font-semibold mb-0 mt-0 first:mt-0">{children}</h6>,
+                            strong: ({children}) => <strong className="font-bold">{children}</strong>,
+                            em: ({children}) => <em className="italic">{children}</em>,
+                            hr: () => <hr className="my-1 border-t border-slate-300" />,
+                            a: ({children, href}) => <a href={href} className="underline hover:no-underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+                          }}
+                        >
+                          {message.text.replace('![Camera Stream](stream)', '').replace('[CAMERA_CLOSED]', '')}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Camera Stream Bubble */}
+                  {message.text.includes('![Camera Stream](stream)') && (
+                    <div className="pl-14"> {/* Indent to align with text bubble */}
+                      <CameraStream onClose={() => handleCloseStream(message.id)} />
+                    </div>
+                  )}
+
+                  {/* Closed Camera Bubble */}
+                  {message.text.includes('[CAMERA_CLOSED]') && (
+                     <div className="pl-14">
+                        <div className="flex items-center gap-2 p-3 bg-slate-100 rounded-lg border border-slate-200 text-slate-500 text-sm italic animate-fadeIn w-fit">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                                <path d="M3.28 2.22a.75.75 0 00-1.06 1.06l14.5 14.5a.75.75 0 101.06-1.06l-1.745-1.745a10.029 10.029 0 003.3-5.975 1 1 0 00-1.3-1.323.75.75 0 00-1.06 1.06 8.5 8.5 0 01-2.535 3.975L3.28 2.22z" />
+                                <path d="M9.877 5.355a8.465 8.465 0 014.192 1.767.75.75 0 101.06-1.06A9.965 9.965 0 0010 4a9.962 9.962 0 00-8.096 4.23.75.75 0 101.293.755A8.462 8.462 0 019.877 5.355z" />
+                                <path d="M7.354 6.293a.75.75 0 00-1.06 1.06l.565.566A2.5 2.5 0 009.34 10.4l.556.556a.75.75 0 001.06-1.06l-.555-.556a.75.75 0 00-1.06-1.06l-.556-.555a.75.75 0 00-1.06-1.06l-.566-.565z" />
+                            </svg>
+                            <span>Camera stream ended</span>
+                        </div>
+                     </div>
+                  )}
                 </div>
               )}
-              <div
-                className={`px-5 py-4 rounded-2xl backdrop-blur-xl border transition-all duration-500 hover:scale-[1.02] hover:-translate-y-0.5 group max-w-full overflow-hidden ${
-                  message.sender === 'user'
-                    ? 'bg-gradient-to-br from-slate-900 via-gray-900 to-black text-white rounded-br-md border-slate-700/50 shadow-2xl shadow-slate-900/25'
-                    : 'bg-gradient-to-br from-white/90 via-white/80 to-white/70 text-slate-800 border-white/60 rounded-bl-md shadow-xl shadow-blue-500/10 ring-1 ring-blue-500/20'
-                }`}
-              >
-                <div className={`leading-relaxed font-medium tracking-wide break-words whitespace-pre-wrap ${
-                  message.sender === 'user' ? 'text-sm' : 'text-sm'
-                }`}>
-                  <ReactMarkdown
-                    components={{
-                      p: ({children}) => <p className="mb-0.5 last:mb-0 leading-relaxed">{children}</p>,
-                      code: ({children}) => <code className={`px-1 py-0.5 rounded text-xs font-mono ${
-                        message.sender === 'user' ? 'bg-slate-700' : 'bg-slate-200'
-                      }`}>{children}</code>,
-                      pre: ({children}) => <pre className={`p-1.5 rounded-md overflow-x-auto text-xs font-mono mb-0.5 break-words ${
-                        message.sender === 'user' ? 'bg-slate-800' : 'bg-slate-100'
-                      }`}>{children}</pre>,
-                      ul: ({children}) => <ul className="mb-0.5 last:mb-0 ml-2 list-disc space-y-0">{children}</ul>,
-                      ol: ({children}) => <ol className="mb-0.5 last:mb-0 ml-2 list-decimal space-y-0">{children}</ol>,
-                      li: ({children}) => <li>{children}</li>,
-                      blockquote: ({children}) => <blockquote className={`border-l-2 pl-2 italic my-0.5 ${
-                        message.sender === 'user' ? 'border-slate-600' : 'border-slate-300'
-                      }`}>{children}</blockquote>,
-                      h1: ({children}) => <h1 className="text-lg font-bold mb-0.5 mt-1 first:mt-0">{children}</h1>,
-                      h2: ({children}) => <h2 className="text-base font-bold mb-0.5 mt-0.5 first:mt-0">{children}</h2>,
-                      h3: ({children}) => <h3 className="text-sm font-bold mb-0 mt-0.5 first:mt-0">{children}</h3>,
-                      h4: ({children}) => <h4 className="text-sm font-semibold mb-0 mt-0.5 first:mt-0">{children}</h4>,
-                      h5: ({children}) => <h5 className="text-xs font-semibold mb-0 mt-0 first:mt-0">{children}</h5>,
-                      h6: ({children}) => <h6 className="text-xs font-semibold mb-0 mt-0 first:mt-0">{children}</h6>,
-                      strong: ({children}) => <strong className="font-bold">{children}</strong>,
-                      em: ({children}) => <em className="italic">{children}</em>,
-                      hr: () => <hr className={`my-1 border-t ${
-                        message.sender === 'user' ? 'border-slate-600' : 'border-slate-300'
-                      }`} />,
-                      a: ({children, href}) => <a href={href} className="underline hover:no-underline" target="_blank" rel="noopener noreferrer">{children}</a>,
-                    }}
-                  >
-                    {message.text}
-                  </ReactMarkdown>
-                </div>
-              </div>
+
               {message.sender === 'user' && (
-                <div className="w-10 h-10 bg-gradient-to-br from-slate-700 via-gray-800 to-black rounded-full flex items-center justify-center flex-shrink-0 shadow-xl ring-2 ring-white/60 ring-offset-1 ring-offset-slate-900/20">
-                  <span className="text-white text-sm drop-shadow-sm">👤</span>
+                <div className="flex items-end space-x-3 max-w-xs lg:max-w-lg xl:max-w-xl">
+                  <div
+                    className={`px-5 py-4 rounded-2xl backdrop-blur-xl border transition-all duration-500 hover:scale-[1.02] hover:-translate-y-0.5 group max-w-full overflow-hidden bg-gradient-to-br from-slate-900 via-gray-900 to-black text-white rounded-br-md border-slate-700/50 shadow-2xl shadow-slate-900/25`}
+                  >
+                    <div className={`leading-relaxed font-medium tracking-wide break-words whitespace-pre-wrap text-sm`}>
+                      <ReactMarkdown
+                        components={{
+                          p: ({children}) => <p className="mb-0.5 last:mb-0 leading-relaxed">{children}</p>,
+                          code: ({children}) => <code className={`px-1 py-0.5 rounded text-xs font-mono bg-slate-700`}>{children}</code>,
+                          pre: ({children}) => <pre className={`p-1.5 rounded-md overflow-x-auto text-xs font-mono mb-0.5 break-words bg-slate-800`}>{children}</pre>,
+                          a: ({children, href}) => <a href={href} className="underline hover:no-underline" target="_blank" rel="noopener noreferrer">{children}</a>,
+                        }}
+                      >
+                        {message.text}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 bg-gradient-to-br from-slate-700 via-gray-800 to-black rounded-full flex items-center justify-center flex-shrink-0 shadow-xl ring-2 ring-white/60 ring-offset-1 ring-offset-slate-900/20">
+                    <span className="text-white text-sm drop-shadow-sm">👤</span>
+                  </div>
                 </div>
               )}
             </div>
