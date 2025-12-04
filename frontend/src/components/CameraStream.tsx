@@ -82,7 +82,7 @@ export default function CameraStream({ onClose }: { onClose?: () => void }) {
           <img
             ref={imgRef}
             alt="Camera Stream"
-            className="w-full h-auto object-cover"
+            className="w-full h-auto"
             style={{ minHeight: '240px', backgroundColor: '#1a1a1a' }}
           />
           

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import CameraStream from '../components/CameraStream'
+import DepthResult from '../components/DepthResult'
 
 interface Message {
   id: string
@@ -161,7 +162,7 @@ export default function ChatInterface() {
                             a: ({children, href}) => <a href={href} className="underline hover:no-underline" target="_blank" rel="noopener noreferrer">{children}</a>,
                           }}
                         >
-                          {message.text.replace('![Camera Stream](stream)', '').replace('[CAMERA_CLOSED]', '')}
+                          {message.text.replace('![Camera Stream](stream)', '').replace('[CAMERA_CLOSED]', '').replace(/```json\s*\{[\s\S]*?"type": "depth_result"[\s\S]*?\}\s*```/g, '')}
                         </ReactMarkdown>
                       </div>
                     </div>
@@ -173,6 +174,31 @@ export default function ChatInterface() {
                       <CameraStream onClose={() => handleCloseStream(message.id)} />
                     </div>
                   )}
+
+                  {/* Depth Result Bubble */}
+                  {message.text.includes('"type": "depth_result"') && (() => {
+                    try {
+                      const jsonMatch = message.text.match(/```json\s*({[\s\S]*?})\s*```/);
+                      if (jsonMatch) {
+                        const data = JSON.parse(jsonMatch[1]);
+                        if (data.type === 'depth_result') {
+                          return (
+                            <div className="pl-14">
+                              <DepthResult
+                                imageUrl={data.image}
+                                x={data.x}
+                                y={data.y}
+                                z={data.z}
+                              />
+                            </div>
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      console.error('Failed to parse depth result:', e);
+                    }
+                    return null;
+                  })()}
 
                   {/* Closed Camera Bubble */}
                   {message.text.includes('[CAMERA_CLOSED]') && (

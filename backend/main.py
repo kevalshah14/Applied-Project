@@ -1,12 +1,14 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from typing import List
 import json
+import cv2
 from ai.chat import generate_chat_stream, Message
 from perception.stream import router as perception_router, manager
+from state import image_store
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -52,6 +54,18 @@ async def chat_endpoint(request: ChatRequest):
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@app.get("/image/{image_id}")
+async def get_image(image_id: str):
+    print(f"DEBUG: Fetching image {image_id}. Store keys: {list(image_store.keys())}")
+    if image_id in image_store:
+        img = image_store[image_id]
+        ret, buffer = cv2.imencode('.jpg', img)
+        if ret:
+            return Response(content=buffer.tobytes(), media_type="image/jpeg")
+    else:
+        print(f"DEBUG: Image {image_id} not found in store")
+    return Response(status_code=404)
 
 if __name__ == "__main__":
     import uvicorn

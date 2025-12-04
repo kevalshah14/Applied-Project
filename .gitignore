@@ -135,3 +135,8 @@ dist/
 secrets/
 *.key
 *.pem
+
+# SAM model files
+*.pt
+backend/models/
+backend/sam*.pt
