@@ -9,6 +9,24 @@ body {
   background-attachment: fixed;
   min-height: 100vh;
   position: relative;
+  transition: background-color 0.5s ease, color 0.5s ease;
+}
+
+.dark body {
+  background-color: #0a0a0a;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.08) 1.2px, transparent 1.2px);
+}
+
+/* Add global transitions for common properties */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
+/* Exclude transitions for transform/opacity on specific elements where it might cause jank or conflict */
+.no-transition {
+  transition: none !important;
 }
 
 /* Gradient orbs removed for cleaner look */
