@@ -3,8 +3,19 @@ Robot controller for handling movement and manipulation commands.
 """
 
 import asyncio
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, List, Tuple
 import logging
+import time
+import numpy as np
+
+# Try importing pydobot, handle if missing (mock mode or error)
+try:
+    import pydobot
+    from pydobot.dobot import MODE_PTP
+except ImportError:
+    pydobot = None
+    MODE_PTP = None
+    print("Warning: pydobot not installed. Robot control will fail.")
 
 logger = logging.getLogger(__name__)
 
@@ -14,264 +25,237 @@ class RobotController:
     
     def __init__(self):
         """Initialize the robot controller."""
+        self.device = None
         self.is_connected = False
+        self.affine_matrix = None
+        self.default_port = '/dev/tty.usbmodem101'  # Default from provided tools
+        
+        # Current state tracking (approximate, as we might not query continuously)
         self.current_pose = {
             "position": {"x": 0.0, "y": 0.0, "z": 0.0},
-            "orientation": {"roll": 0.0, "pitch": 0.0, "yaw": 0.0}
+            "orientation": {"r": 0.0}
         }
-        self.gripper_state = "unknown"  # Can be: "open", "closed", "unknown"
-        
-        # Define home position (safe resting position)
-        self.home_pose = {
-            "position": {"x": 0.0, "y": 0.0, "z": 0.3},  # 30cm above origin
-            "orientation": {"roll": 0.0, "pitch": 0.0, "yaw": 0.0}
-        }
+        self.gripper_state = "unknown"
         
         logger.info("Robot controller initialized")
     
-    async def connect(self) -> bool:
+    def _ensure_device(self):
+        """Helper to ensure device is connected."""
+        if self.device is None:
+            if pydobot:
+                try:
+                    self.device = pydobot.Dobot(port=self.default_port)
+                    self.is_connected = True
+                    logger.info(f"Connected to Dobot on {self.default_port}")
+                except Exception as e:
+                    logger.error(f"Failed to connect to Dobot: {e}")
+                    raise e
+            else:
+                raise ImportError("pydobot not installed")
+        return self.device
+
+    async def connect(self, port: Optional[str] = None) -> bool:
         """
         Connect to the robot hardware.
-        
-        Returns:
-            bool: True if connection successful, False otherwise
         """
+        target_port = port or self.default_port
         try:
-            # TODO: Implement actual robot connection logic
-            logger.info("Attempting to connect to robot...")
-            await asyncio.sleep(0.1)  # Simulate connection delay
+            if self.is_connected and self.device:
+                return True
+
+            logger.info(f"Attempting to connect to robot on {target_port}...")
+            
+            # Run blocking connection in thread
+            def _connect():
+                if not pydobot:
+                    raise ImportError("pydobot library not found")
+                return pydobot.Dobot(target_port)
+
+            self.device = await asyncio.to_thread(_connect)
             self.is_connected = True
+            self.default_port = target_port
             logger.info("Robot connected successfully")
             return True
         except Exception as e:
             logger.error(f"Failed to connect to robot: {e}")
+            self.is_connected = False
             return False
-    
+
     async def disconnect(self) -> bool:
-        """
-        Disconnect from the robot hardware.
-        
-        Returns:
-            bool: True if disconnection successful, False otherwise
-        """
+        """Disconnect from the robot hardware."""
         try:
-            # TODO: Implement actual robot disconnection logic
+            if self.device:
+                await asyncio.to_thread(self.device.close)
+            self.device = None
             self.is_connected = False
             logger.info("Robot disconnected")
             return True
         except Exception as e:
             logger.error(f"Failed to disconnect from robot: {e}")
             return False
-    
-    def get_pose(self) -> Dict[str, Any]:
-        """
-        Get the current pose of the robot end-effector.
+
+    async def get_pose(self) -> Dict[str, Any]:
+        """Get the current pose of the robot end-effector."""
+        if not self.is_connected or not self.device:
+            return self.current_pose
         
-        Returns:
-            dict: Current pose containing position (x, y, z in meters) and 
-                  orientation (roll, pitch, yaw in radians)
-                  
-        Example:
-            {
-                "position": {"x": 0.5, "y": 0.3, "z": 0.2},
-                "orientation": {"roll": 0.0, "pitch": 0.0, "yaw": 1.57}
+        try:
+            def _get_pose():
+                pose, joint = self.device.get_pose()
+                return pose, joint
+
+            pose, _ = await asyncio.to_thread(_get_pose)
+            # pose is typically (x, y, z, r, j1, j2, j3, j4)
+            # pydobot get_pose returns (x, y, z, r, j1, j2, j3, j4)
+            
+            self.current_pose = {
+                "position": {"x": pose[0], "y": pose[1], "z": pose[2]},
+                "orientation": {"r": pose[3]}
             }
-        """
-        if not self.is_connected:
-            logger.warning("Robot not connected, returning cached pose")
-        
-        # TODO: Implement actual pose reading from robot
-        logger.debug(f"Current pose: {self.current_pose}")
-        return self.current_pose.copy()
-    
+            return self.current_pose
+        except Exception as e:
+            logger.error(f"Error getting pose: {e}")
+            return self.current_pose
+
     async def move_to_pose(
         self, 
         x: float, 
         y: float, 
-        z: float,
-        roll: Optional[float] = None,
-        pitch: Optional[float] = None,
-        yaw: Optional[float] = None,
-        speed: float = 1.0
+        z: float, 
+        r: float = 0.0
     ) -> bool:
         """
-        Move the robot end-effector to a specific pose.
-        
-        Args:
-            x: Target X coordinate in meters
-            y: Target Y coordinate in meters
-            z: Target Z coordinate in meters
-            roll: Target roll angle in radians (optional, maintains current if None)
-            pitch: Target pitch angle in radians (optional, maintains current if None)
-            yaw: Target yaw angle in radians (optional, maintains current if None)
-            speed: Speed multiplier (0.0 to 1.0)
-            
-        Returns:
-            bool: True if movement successful, False otherwise
+        Move the robot to a specific Cartesian pose (x, y, z, r).
         """
-        if not self.is_connected:
+        if not self.is_connected or not self.device:
             logger.error("Robot not connected")
-            return False
-        
+            try:
+                await self.connect()
+            except:
+                return False
+            if not self.is_connected:
+                return False
+
         try:
-            target_pose = {
-                "position": {"x": x, "y": y, "z": z},
-                "orientation": {
-                    "roll": roll if roll is not None else self.current_pose["orientation"]["roll"],
-                    "pitch": pitch if pitch is not None else self.current_pose["orientation"]["pitch"],
-                    "yaw": yaw if yaw is not None else self.current_pose["orientation"]["yaw"]
-                }
-            }
+            logger.info(f"Moving to x={x}, y={y}, z={z}, r={r}")
             
-            logger.info(f"Moving to pose: position=({x:.3f}, {y:.3f}, {z:.3f})m, "
-                       f"orientation=({target_pose['orientation']['roll']:.3f}, "
-                       f"{target_pose['orientation']['pitch']:.3f}, "
-                       f"{target_pose['orientation']['yaw']:.3f})rad, speed={speed}")
+            def _move():
+                self.device.speed(50, 50)
+                self.device.move_to(mode=int(MODE_PTP.MOVJ_XYZ), x=x, y=y, z=z, r=r)
+                # pydobot move_to might not block until completion depending on config,
+                # but usually we wait a bit or poll. The tool example used sleep.
+                time.sleep(2)
+
+            await asyncio.to_thread(_move)
             
-            # Print command to terminal
-            print(f"\n🤖 ROBOT COMMAND: move_to_pose(x={x:.3f}, y={y:.3f}, z={z:.3f}, "
-                  f"roll={target_pose['orientation']['roll']:.3f}, "
-                  f"pitch={target_pose['orientation']['pitch']:.3f}, "
-                  f"yaw={target_pose['orientation']['yaw']:.3f}, speed={speed})")
-            
-            # TODO: Implement actual robot movement logic
-            await asyncio.sleep(0.1)  # Simulate movement time
-            
-            # Update current pose
-            self.current_pose = target_pose
-            logger.info("Movement completed successfully")
+            # Update pose cache
+            self.current_pose["position"] = {"x": x, "y": y, "z": z}
+            self.current_pose["orientation"] = {"r": r}
             return True
-            
         except Exception as e:
             logger.error(f"Failed to move to pose: {e}")
             return False
-    
-    async def go_home(self, speed: float = 1.0) -> bool:
-        """
-        Move the robot to its home position (safe resting position).
-        
-        Args:
-            speed: Speed multiplier (0.0 to 1.0)
-            
-        Returns:
-            bool: True if movement to home successful, False otherwise
-        """
-        if not self.is_connected:
-            logger.error("Robot not connected")
-            return False
-        
-        try:
-            logger.info(f"Moving to home position at speed {speed}")
-            
-            # Move to home pose
-            home = self.home_pose
-            success = await self.move_to_pose(
-                x=home["position"]["x"],
-                y=home["position"]["y"],
-                z=home["position"]["z"],
-                roll=home["orientation"]["roll"],
-                pitch=home["orientation"]["pitch"],
-                yaw=home["orientation"]["yaw"],
-                speed=speed
-            )
-            
-            if success:
-                logger.info("Robot moved to home position successfully")
-                return True
-            else:
-                logger.error("Failed to move to home position")
-                return False
-            
-        except Exception as e:
-            logger.error(f"Failed to go home: {e}")
-            return False
-    
-    async def open_gripper(self, speed: float = 1.0) -> bool:
-        """
-        Open the robot gripper.
-        
-        Args:
-            speed: Speed multiplier (0.0 to 1.0)
-            
-        Returns:
-            bool: True if gripper opened successfully, False otherwise
-        """
-        if not self.is_connected:
-            logger.error("Robot not connected")
-            return False
-        
-        try:
-            logger.info(f"Opening gripper at speed {speed}")
-            
-            # Print command to terminal
-            print(f"\n🤖 ROBOT COMMAND: open_gripper(speed={speed})")
-            
-            # TODO: Implement actual gripper opening logic
-            await asyncio.sleep(0.1)  # Simulate gripper movement time
-            self.gripper_state = "open"
-            logger.info("Gripper opened successfully")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to open gripper: {e}")
-            return False
-    
-    async def close_gripper(self, speed: float = 1.0, force: Optional[float] = None) -> bool:
-        """
-        Close the robot gripper.
-        
-        Args:
-            speed: Speed multiplier (0.0 to 1.0)
-            force: Optional force limit for gripping (robot-specific units)
-            
-        Returns:
-            bool: True if gripper closed successfully, False otherwise
-        """
-        if not self.is_connected:
-            logger.error("Robot not connected")
-            return False
-        
-        try:
-            force_str = f" with force limit {force}" if force is not None else ""
-            logger.info(f"Closing gripper at speed {speed}{force_str}")
-            
-            # Print command to terminal
-            print(f"\n🤖 ROBOT COMMAND: close_gripper(speed={speed}, force={force})")
-            
-            # TODO: Implement actual gripper closing logic
-            await asyncio.sleep(0.1)  # Simulate gripper movement time
-            self.gripper_state = "closed"
-            logger.info("Gripper closed successfully")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to close gripper: {e}")
-            return False
-    
-    def get_gripper_state(self) -> str:
-        """
-        Get the current state of the gripper.
-        
-        Returns:
-            str: Current gripper state - "open", "closed", or "unknown"
-        """
-        if not self.is_connected:
-            logger.warning("Robot not connected, returning cached gripper state")
-        
-        # TODO: Implement actual gripper state reading from robot
-        logger.debug(f"Gripper state: {self.gripper_state}")
-        return self.gripper_state
-    
-    def get_status(self) -> Dict[str, Any]:
-        """
-        Get the current status of the robot.
-        
-        Returns:
-            dict: Status information including connection state, pose, and gripper state
-        """
-        return {
-            "connected": self.is_connected,
-            "pose": self.current_pose.copy(),
-            "gripper_state": self.gripper_state
-        }
 
+    async def go_home(self) -> bool:
+        """Home the Dobot."""
+        if not self.is_connected:
+            await self.connect()
+            
+        try:
+            logger.info("Homing the robot...")
+            def _home():
+                self.device.home()
+                time.sleep(2)
+                
+            await asyncio.to_thread(_home)
+            logger.info("Robot homed")
+            return True
+        except Exception as e:
+            logger.error(f"Error homing robot: {e}")
+            return False
+
+    async def suction_on(self) -> bool:
+        """Turn suction ON (close gripper equivalent)."""
+        if not self.is_connected:
+            await self.connect()
+            
+        try:
+            logger.info("Turning suction ON")
+            await asyncio.to_thread(self.device.suck, True)
+            self.gripper_state = "closed" # effectively holding something
+            return True
+        except Exception as e:
+            logger.error(f"Error turning suction ON: {e}")
+            return False
+
+    async def suction_off(self) -> bool:
+        """Turn suction OFF (open gripper equivalent)."""
+        if not self.is_connected:
+            await self.connect()
+            
+        try:
+            logger.info("Turning suction OFF")
+            await asyncio.to_thread(self.device.suck, False)
+            self.gripper_state = "open"
+            return True
+        except Exception as e:
+            logger.error(f"Error turning suction OFF: {e}")
+            return False
+
+    # Aliases for compatibility with existing interface
+    async def open_gripper(self, speed: float = 1.0) -> bool:
+        return await self.suction_off()
+
+    async def close_gripper(self, speed: float = 1.0, force: Optional[float] = None) -> bool:
+        return await self.suction_on()
+
+    # =========================================================
+    # AFFINE + PIXEL->ROBOT HELPERS
+    # =========================================================
+    def set_affine_matrix(self, matrix_flat: List[float]) -> bool:
+        """Set the global affine matrix from a flat list of 9 values."""
+        try:
+            arr = np.array(matrix_flat, dtype=np.float64).reshape(3, 3)
+            self.affine_matrix = arr
+            logger.info("Affine matrix updated")
+            return True
+        except Exception as e:
+            logger.error(f"Error setting affine matrix: {e}")
+            return False
+
+    def apply_affine(self, u: float, v: float) -> Tuple[float, float]:
+        """Convert pixel (u, v) to robot (x, y) using affine matrix."""
+        if self.affine_matrix is None:
+            raise ValueError("Affine matrix not set")
+            
+        uv1 = np.array([u, v, 1.0], dtype=np.float64)
+        XY = self.affine_matrix @ uv1
+        return float(XY[0]), float(XY[1])
+
+    async def move_above_pixel(self, u: float, v: float, z_above: float = -30.0) -> bool:
+        """Move robot to a point ABOVE the block at image pixel (u, v)."""
+        if self.affine_matrix is None:
+            logger.error("Affine matrix not set")
+            return False
+            
+        try:
+            Xa, Ya = self.apply_affine(u, v)
+            logger.info(f"Affine: pixel({u:.3f}, {v:.3f}) -> robot({Xa:.6f}, {Ya:.6f})")
+            return await self.move_to_pose(Xa, Ya, z_above, 0.0)
+        except Exception as e:
+            logger.error(f"Error in move_above_pixel: {e}")
+            return False
+
+    async def move_to_block_pixel(self, u: float, v: float, block_height: float = -30.0) -> bool:
+        """Move robot to the BLOCK height at image pixel (u, v)."""
+        if self.affine_matrix is None:
+            logger.error("Affine matrix not set")
+            return False
+            
+        try:
+            Xa, Ya = self.apply_affine(u, v)
+            logger.info(f"Affine: pixel({u:.3f}, {v:.3f}) -> robot({Xa:.6f}, {Ya:.6f})")
+            return await self.move_to_pose(Xa, Ya, block_height, 0.0)
+        except Exception as e:
+            logger.error(f"Error in move_to_block_pixel: {e}")
+            return False

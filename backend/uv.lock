@@ -45,6 +45,8 @@ dependencies = [
     { name = "fastapi" },
     { name = "google-genai" },
     { name = "opencv-python" },
+    { name = "pydobot" },
+    { name = "pydobot2" },
     { name = "python-dotenv" },
     { name = "ultralytics" },
     { name = "uvicorn" },
@@ -56,6 +58,8 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.123.5" },
     { name = "google-genai", specifier = ">=1.52.0" },
     { name = "opencv-python", specifier = ">=4.12.0.88" },
+    { name = "pydobot", specifier = ">=1.3.2" },
+    { name = "pydobot2", specifier = ">=0.1.0" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "ultralytics", specifier = ">=8.3.234" },
     { name = "uvicorn", specifier = ">=0.38.0" },
@@ -941,12 +945,45 @@ wheels = [
 ]
 
 [[package]]
+name = "pydobot"
+version = "1.3.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyserial" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/37/8b/c4e042466c1d9d73117b6f555f6088ba8627850ef9fa18a9861d963ddfcd/pydobot-1.3.2.tar.gz", hash = "sha256:fd9bf88701b9edb4a9f0e3ee34e144d4ee3837b5931f78a461c3e9be6d7073f6", size = 5460, upload-time = "2021-03-05T07:30:55.883Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/26/d8/cf69b982978e92529c8d7c5f077e94bebe213ea56bb6be2c11d89f94e365/pydobot-1.3.2-py3-none-any.whl", hash = "sha256:1649f41ca0fc49c0d1f1dcf624ceb8264bbc1522c2366438547917bd353ea25a", size = 7630, upload-time = "2021-03-05T07:30:54.892Z" },
+]
+
+[[package]]
+name = "pydobot2"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyserial" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/46/1c/b175ccca4efb5769ade9d1dcd7dac8861babf79ee70ca493bc6d10f5f1e3/pydobot2-0.1.0.tar.gz", hash = "sha256:5437a01811b5877804a9c2ffe23879bbb8252c88fb72a0eaa0e0957da79a2668", size = 11744, upload-time = "2020-09-21T13:34:14.162Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/48/61/c7493a38b7915ebc549306efd8c04515fb0ce5a1391074a3191d6141b49c/pydobot2-0.1.0-py3-none-any.whl", hash = "sha256:4c22faebe0f9f4aba3296fc23d546caf461526d53b4f68cdd23b2709052a8018", size = 12953, upload-time = "2020-09-21T13:34:11.265Z" },
+]
+
+[[package]]
 name = "pyparsing"
 version = "3.2.5"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f2/a5/181488fc2b9d093e3972d2a472855aae8a03f000592dbfce716a512b3359/pyparsing-3.2.5.tar.gz", hash = "sha256:2df8d5b7b2802ef88e8d016a2eb9c7aeaa923529cd251ed0fe4608275d4105b6", size = 1099274, upload-time = "2025-09-21T04:11:06.277Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/10/5e/1aa9a93198c6b64513c9d7752de7422c06402de6600a8767da1524f9570b/pyparsing-3.2.5-py3-none-any.whl", hash = "sha256:e38a4f02064cf41fe6593d328d0512495ad1f3d8a91c4f73fc401b3079a59a5e", size = 113890, upload-time = "2025-09-21T04:11:04.117Z" },
+]
+
+[[package]]
+name = "pyserial"
+version = "3.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/74/11b04703ec416717b247d789103277269d567db575d2fd88f25d9767fe3d/pyserial-3.4.tar.gz", hash = "sha256:6e2d401fdee0eab996cf734e67773a0143b932772ca8b42451440cfed942c627", size = 151657, upload-time = "2017-07-23T21:10:04.368Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0d/e4/2a744dd9e3be04a0c0907414e2a01a7c88bb3915cbe3c8cc06e209f59c30/pyserial-3.4-py2.py3-none-any.whl", hash = "sha256:e0770fadba80c31013896c7e6ef703f72e7834965954a78e71a3049488d4d7d8", size = 193717, upload-time = "2017-07-23T21:10:01.982Z" },
 ]
 
 [[package]]

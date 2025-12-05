@@ -7,14 +7,14 @@ import numpy as np
 import os
 import json
 from google.genai import types
-from config import M, default_port
+
 
 # =========================================================
 # GLOBAL STATE
 # =========================================================
 device = None          # single global Dobot handle
-affine_matrix = M   # optional global 3x3 affine for pixel->robot
-default_port = default_port
+affine_matrix = None   # optional global 3x3 affine for pixel->robot
+default_port = '/dev/tty.usbmodem101'
 
 # =========================================================
 # HELPER: ensure device is connected

@@ -16,14 +16,14 @@ class RobotController:
         """Initialize the robot controller."""
         self.is_connected = False
         self.current_pose = {
-            "position": {"x": 240.0, "y": 0.0, "z": 150.0},  # 30cm above origin
+            "position": {"x": 0.0, "y": 0.0, "z": 0.0},
             "orientation": {"roll": 0.0, "pitch": 0.0, "yaw": 0.0}
         }
         self.gripper_state = "unknown"  # Can be: "open", "closed", "unknown"
         
         # Define home position (safe resting position)
         self.home_pose = {
-            "position": {"x": 240.0, "y": 0.0, "z": 150.0},  # 30cm above origin
+            "position": {"x": 0.0, "y": 0.0, "z": 0.3},  # 30cm above origin
             "orientation": {"roll": 0.0, "pitch": 0.0, "yaw": 0.0}
         }
         

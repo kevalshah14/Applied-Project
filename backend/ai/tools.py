@@ -11,10 +11,10 @@ from state import image_store
 from perception.stream import manager
 from perception.depth import get_depth_at_point
 from ultralytics import SAM
-from controls import RobotController
+from controls import robot_controller
 
-# Initialize robot controller globally
-robot_controller = RobotController()
+# Robot controller is imported as a singleton
+# robot_controller = RobotController()
 
 # Initialize SAM model globally to avoid reloading
 # Using sam2.1_b.pt as a safe default if sam3 isn't available, or trying sam3.pt if user requested
@@ -364,6 +364,63 @@ def find_object(object_description: str) -> dict:
             
             result = get_depth_at_point(norm_x, norm_y) # Get depth data
             
+            # Fallback: If single point depth failed but we have a mask, use the mask median depth
+            if "error" in result and sam_model and 'mask_binary' in locals() and mask_binary is not None:
+                print("DEBUG: Depth at centroid failed. Trying median depth of segmentation mask.")
+                
+                # Retry getting depth frame since get_depth_at_point might have consumed the previous one
+                depth_frame = None
+                for _ in range(10):
+                    depth_frame = manager.get_depth_frame()
+                    if depth_frame is not None:
+                        break
+                    time.sleep(0.05)
+                
+                if depth_frame is not None:
+                    d_h, d_w = depth_frame.shape
+                    m_h, m_w = mask_binary.shape
+                    
+                    # Resize mask to match depth frame resolution if needed
+                    if (d_h, d_w) != (m_h, m_w):
+                        mask_resized = cv2.resize(mask_binary, (d_w, d_h), interpolation=cv2.INTER_NEAREST)
+                    else:
+                        mask_resized = mask_binary
+                        
+                    # Apply mask to get depths within the object
+                    masked_depths = depth_frame[mask_resized > 0]
+                    valid_depths = masked_depths[masked_depths > 0] # Filter out 0/invalid depths
+                    
+                    if len(valid_depths) > 0:
+                        median_z = float(np.median(valid_depths))
+                        print(f"DEBUG: Found median depth from mask: {median_z}")
+                        
+                        # We need intrinsics for the depth frame resolution
+                        fx = manager.fx if manager.fx else 882.5
+                        fy = manager.fy if manager.fy else 882.5
+                        cx = manager.cx if manager.cx else d_w / 2.0
+                        cy = manager.cy if manager.cy else d_h / 2.0
+                        
+                        # Calculate pixel coordinates in the depth frame
+                        depth_pixel_x = norm_x * d_w
+                        depth_pixel_y = norm_y * d_h
+                        
+                        # Calculate 3D coordinates (using same formula as get_depth_at_point)
+                        x_mm = (depth_pixel_x - cx) * median_z / fx
+                        y_mm = -(depth_pixel_y - cy) * median_z / fy
+                        
+                        # Construct success result
+                        result = {
+                            "x": int(x_mm),
+                            "y": int(y_mm),
+                            "z": int(median_z)
+                            # 'frame' is not needed here as we use 'img' below
+                        }
+                        print(f"DEBUG: Calculated fallback coordinates: x={result['x']}, y={result['y']}, z={result['z']}")
+                    else:
+                         print("DEBUG: No valid depth values found in the masked region.")
+                else:
+                    print("DEBUG: Could not get depth frame for fallback.")
+
             if "error" in result:
                 return result
 
@@ -430,15 +487,16 @@ async def _open_gripper_async() -> str:
     success = await robot_controller.open_gripper()
     
     if success:
-        state = robot_controller.get_gripper_state()
+        # Get state directly from controller without async/await for properties
+        state = robot_controller.gripper_state
         return f"✓ Gripper opened successfully. Current state: {state}"
     else:
         return "Error: Failed to open gripper. Check robot connection and hardware."
 
 def open_gripper() -> str:
-    """Opens the robot's gripper.
+    """Opens the robot's gripper/suction cup to release an object.
     
-    Use this tool when the user wants to open the gripper, release an object, or let go of something.
+    Use this tool IMMEDIATELY when the user asks to open gripper, release, drop, or let go.
     
     Returns:
         str: Success or error message.
@@ -460,15 +518,16 @@ async def _close_gripper_async() -> str:
     success = await robot_controller.close_gripper()
     
     if success:
-        state = robot_controller.get_gripper_state()
+        # Get state directly from controller without async/await for properties
+        state = robot_controller.gripper_state
         return f"✓ Gripper closed successfully. Current state: {state}"
     else:
         return "Error: Failed to close gripper. Check robot connection and hardware."
 
 def close_gripper() -> str:
-    """Closes the robot's gripper to grasp an object.
+    """Closes the robot's gripper/suction cup to grasp an object.
     
-    Use this tool when the user wants to close the gripper, grab something, or pick up an object.
+    Use this tool IMMEDIATELY when the user asks to close gripper, grab, pick, or hold.
     
     Returns:
         str: Success or error message.
@@ -490,7 +549,8 @@ async def _go_home_async() -> str:
     success = await robot_controller.go_home()
     
     if success:
-        pose = robot_controller.get_pose()
+        # Use cached pose after move
+        pose = robot_controller.current_pose
         return f"✓ Robot moved to home position successfully. Current position: X={pose['position']['x']:.3f}m, Y={pose['position']['y']:.3f}m, Z={pose['position']['z']:.3f}m"
     else:
         return "Error: Failed to move to home position. Check robot connection and hardware."
@@ -541,12 +601,34 @@ async def _pickup_object_async(object_description: str, x_mm: float = None, y_mm
         # Simpler approach: Always find fresh if coordinates not provided
         return "Error: Coordinates not available. Please ask me to find the object first (e.g., 'where is the apple?'), then I can use those coordinates to pick it up."
     
-    # Convert coordinates from mm to meters
-    x_m = coords['x'] / 1000.0
-    y_m = coords['y'] / 1000.0
-    z_m = coords['z'] / 1000.0
+    # Use coordinates in mm
+    cam_x = coords['x']
+    cam_y = coords['y']
+    cam_z = coords['z']
     
-    print(f"DEBUG: Target position in meters: x={x_m:.3f}, y={y_m:.3f}, z={z_m:.3f}")
+    print(f"DEBUG: Camera coordinates: x={cam_x}, y={cam_y}, z={cam_z}")
+
+    # Get current robot pose (Start position) to calculate relative target
+    # We assume the robot hasn't moved significantly since the 'find_object' call
+    # or is at the Home position as implied by "consider the home position as the start"
+    current_pose = await robot_controller.get_pose()
+    start_x = current_pose['position']['x']
+    start_y = current_pose['position']['y']
+    start_z = current_pose['position']['z']
+    
+    print(f"DEBUG: Robot Start Pose: x={start_x:.3f}, y={start_y:.3f}, z={start_z:.3f}")
+
+    # Apply Coordinate Transformation based on user rules:
+    # 1. "flip for inverse" (previous): X subtracts, Y adds.
+    # 2. "x is y and y is x" (current): Swap camera axes.
+    # Robot X <-> Camera Y
+    # Robot Y <-> Camera X
+    
+    x_target = start_x + cam_y
+    y_target = start_y - cam_x
+    z_target = start_z - cam_z - 10
+    
+    print(f"DEBUG: Transformed Target (Robot Frame): x={x_target:.3f}, y={y_target:.3f}, z={z_target:.3f}")
     
     # Step 1: Open gripper
     print("DEBUG: Step 1 - Opening gripper")
@@ -556,16 +638,16 @@ async def _pickup_object_async(object_description: str, x_mm: float = None, y_mm
     message += "✓ Gripper opened.\n"
     
     # Step 2: Move to object position (approach from above by adding offset to z)
-    approach_z = z_m + 0.05  # Approach 5cm above object
-    print(f"DEBUG: Step 2 - Moving to approach position (z={approach_z:.3f}m)")
-    approach_success = await robot_controller.move_to_pose(x_m, y_m, approach_z)
+    approach_z = z_target 
+    print(f"DEBUG: Step 2 - Moving to approach position (z={approach_z:.3f}mm)")
+    approach_success = await robot_controller.move_to_pose(x_target, y_target, approach_z)
     if not approach_success:
         return f"Error: Failed to move to approach position above {object_description}."
     message += f"✓ Moved to approach position above {object_description}.\n"
     
     # Step 3: Move down to object
-    print(f"DEBUG: Step 3 - Moving down to object (z={z_m:.3f}m)")
-    move_success = await robot_controller.move_to_pose(x_m, y_m, z_m)
+    print(f"DEBUG: Step 3 - Moving down to object (z={z_target:.3f}mm)")
+    move_success = await robot_controller.move_to_pose(x_target, y_target, z_target)
     if not move_success:
         return f"Error: Failed to move to {object_description}."
     message += f"✓ Moved to {object_description} position.\n"
@@ -578,15 +660,15 @@ async def _pickup_object_async(object_description: str, x_mm: float = None, y_mm
     message += "✓ Gripper closed - object grasped.\n"
     
     # Step 5: Lift object slightly
-    lift_z = z_m + 0.1  # Lift 10cm
-    print(f"DEBUG: Step 5 - Lifting object (z={lift_z:.3f}m)")
-    lift_success = await robot_controller.move_to_pose(x_m, y_m, lift_z)
+    lift_z = z_target + 100.0  # Lift 100mm
+    print(f"DEBUG: Step 5 - Lifting object (z={lift_z:.3f}mm)")
+    lift_success = await robot_controller.move_to_pose(x_target, y_target, lift_z)
     if not lift_success:
         return "Error: Failed to lift object."
     message += "✓ Lifted object.\n"
     
     final_message = f"✓ Successfully picked up {object_description}!\n\n{message}"
-    final_message += f"\nFinal position: X={x_m:.3f}m, Y={y_m:.3f}m, Z={lift_z:.3f}m"
+    final_message += f"\nFinal position: X={x_target:.3f}mm, Y={y_target:.3f}mm, Z={lift_z:.3f}mm"
     
     return final_message
 
@@ -609,3 +691,36 @@ def pickup_object(object_description: str, x_mm: float = None, y_mm: float = Non
         str: Success or error message with details of the pickup operation.
     """
     return asyncio.run(_pickup_object_async(object_description, x_mm, y_mm, z_mm))
+
+async def _get_robot_pose_async() -> str:
+    """Internal async function for getting robot pose."""
+    print("DEBUG: get_robot_pose called")
+    
+    # Ensure robot is connected
+    if not robot_controller.is_connected:
+        print("DEBUG: Robot not connected, attempting to connect...")
+        connected = await robot_controller.connect()
+        if not connected:
+            return "Error: Failed to connect to robot. Cannot get pose."
+    
+    # Update pose data
+    pose = await robot_controller.get_pose()
+    
+    return f"""
+    Current Robot Pose:
+    X: {pose['position']['x']:.3f} mm
+    Y: {pose['position']['y']:.3f} mm
+    Z: {pose['position']['z']:.3f} mm
+    R: {pose['orientation']['r']:.3f} degrees
+    """
+
+def get_robot_pose() -> str:
+    """Gets the current robot position and orientation.
+    
+    Use this tool when the user asks for the robot's position, status, or "where are you?".
+    
+    Returns:
+        str: Current coordinates (x, y, z) and rotation (r).
+    """
+    return asyncio.run(_get_robot_pose_async())
+

@@ -9,6 +9,7 @@ import cv2
 from ai.chat import generate_chat_stream, Message
 from perception.stream import router as perception_router, manager
 from state import image_store
+from controls import robot_controller
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,11 +20,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Failed to start camera on startup: {e}")
     
+    print("Connecting to robot...")
+    try:
+        await robot_controller.connect()
+    except Exception as e:
+        print(f"Failed to connect to robot on startup: {e}")
+    
     yield
     
     # Shutdown
     print("Stopping camera manager...")
     manager.stop()
+    
+    print("Disconnecting robot...")
+    await robot_controller.disconnect()
 
 app = FastAPI(lifespan=lifespan)
 
