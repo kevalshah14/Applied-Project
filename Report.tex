@@ -13,6 +13,14 @@
 \usepackage{booktabs}
 \usepackage{microtype}
 
+% Hyperref setup for blue links
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
+}
+
 % BibTeX definition
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
@@ -27,7 +35,8 @@
 \IEEEauthorblockA{\textit{School of Computing and Augmented Intelligence}\\
 \textit{Arizona State University}\\
 Tempe, Arizona, USA\\
-kshah57@asu.edu}
+kshah57@asu.edu\\
+\href{https://github.com/kevalshah14/Applied-Project}{\textcolor{blue}{github.com/kevalshah14/Applied-Project}}}
 }
 
 \maketitle
@@ -63,7 +72,7 @@ The main contributions of this paper are:
     
     \item \textbf{Robust Visual Grounding:} We integrate Google Gemini for open-vocabulary object detection and SAM 2.1 for precise segmentation, enabling reliable localization even for objects not seen during model training.
     
-    \item \textbf{Open-Source Implementation:} We provide a complete, working implementation as an open-source project, including a Next.js frontend and a Python FastAPI backend.
+    \item \textbf{Open-Source Implementation:} We provide a complete, working implementation as an open-source project, including a Next.js frontend and a Python FastAPI backend. The source code is available at: \url{https://github.com/kevalshah14/Applied-Project}.
 \end{enumerate}
 
 %==============================================================================

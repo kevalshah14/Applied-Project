@@ -2,9 +2,12 @@
 
 A **transferable framework** for controlling robots using natural language, powered by Large Language Models (LLMs) as planners and executors.
 
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-black.svg)](https://github.com/kevalshah14/Applied-Project)
 ![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
+
+**Repository:** [https://github.com/kevalshah14/Applied-Project](https://github.com/kevalshah14/Applied-Project)
 
 ## Overview
 
@@ -95,7 +98,7 @@ Applied-Project/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/Applied-Project.git
+git clone https://github.com/kevalshah14/Applied-Project.git
 cd Applied-Project
 ```
 
