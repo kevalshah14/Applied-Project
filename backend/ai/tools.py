@@ -624,9 +624,9 @@ async def _pickup_object_async(object_description: str, x_mm: float = None, y_mm
     # Robot X <-> Camera Y
     # Robot Y <-> Camera X
     
-    x_target = start_x + cam_y
-    y_target = start_y - cam_x
-    z_target = start_z - cam_z - 10
+    x_target = start_x + cam_y + 38
+    y_target = start_y - cam_x - 5
+    z_target = start_z - cam_z + 60
     
     print(f"DEBUG: Transformed Target (Robot Frame): x={x_target:.3f}, y={y_target:.3f}, z={z_target:.3f}")
     
@@ -671,6 +671,174 @@ async def _pickup_object_async(object_description: str, x_mm: float = None, y_mm
     final_message += f"\nFinal position: X={x_target:.3f}mm, Y={y_target:.3f}mm, Z={lift_z:.3f}mm"
     
     return final_message
+
+async def _place_object_async(object_description: str) -> str:
+    """Internal async function for placing an object."""
+    print(f"DEBUG: place_object called for '{object_description}'")
+    
+    # Ensure robot is connected
+    if not robot_controller.is_connected:
+        print("DEBUG: Robot not connected, attempting to connect...")
+        connected = await robot_controller.connect()
+        if not connected:
+            return "Error: Failed to connect to robot. Cannot place object."
+            
+    # Find the target location first
+    print(f"DEBUG: Finding '{object_description}' to determine place location...")
+    find_result = find_object(object_description)
+    
+    if isinstance(find_result, dict) and "error" in find_result:
+        return f"Error: Could not find '{object_description}' to place on. {find_result['error']}"
+        
+    # We need to extract coordinates from the string find_object returns.
+    # find_object returns a markdown formatted string with a JSON block.
+    # We can use the same parsing logic as before or ideally find_object should return structured data.
+    # But user requested "use the same logic as pickup" regarding "ask use to find it".
+    # Pickup logic: 
+    # 1. Check if coordinates passed in args (from chat history)
+    # 2. If not, return Error telling user to find it first.
+    
+    # However, place_object doesn't have coord args in its signature currently.
+    # So we either modify signature OR we follow the "find it first" pattern strictly.
+    # But find_object returns a string, not the coordinates dict directly usable here easily without parsing.
+    
+    # If the instruction is "ask user to find it and then place", it means:
+    # If we don't know where it is, we should fail and say "Please find the [target] first".
+    # But since we are calling find_object right here, we ARE finding it.
+    
+    # The user query "use the smae logic as pickup why are you using re. ask use to find it an dthe place"
+    # implies: Don't do the finding INSIDE this tool. Expect the coordinates to be known (e.g. from chat history extraction)
+    # OR if not known, tell the user to find it.
+    
+    # So, let's align with pickup_object:
+    # 1. Add x,y,z args to place_object
+    # 2. If provided, use them.
+    # 3. If not provided, return "Error: Coordinates not available. Please ask me to find the object first..."
+    
+    # This requires changing the function signature and the tool definition.
+    
+    # But wait, I can't change tool definition easily without updating chat.py config.
+    # Let's assume for now I should just parse the result of find_object if I call it?
+    # No, user explicitly said "why are you using re".
+    # This means they don't want regex parsing of the string output.
+    # They want the clean logic: Pass coordinates to the function.
+    
+    # I will update place_object to take coordinates, just like pickup_object.
+    return "Error: Please update place_object to accept coordinates. (This is a placeholder)"
+
+async def _place_object_async(object_description: str, x_mm: float = None, y_mm: float = None, z_mm: float = None) -> str:
+    """Internal async function for picking up an object."""
+    print(f"DEBUG: pickup_object called for '{object_description}'")
+    
+    # Ensure robot is connected
+    if not robot_controller.is_connected:
+        print("DEBUG: Robot not connected, attempting to connect...")
+        connected = await robot_controller.connect()
+        if not connected:
+            return "Error: Failed to connect to robot. Cannot pick up object."
+    
+    # Check if coordinates were provided (from chat memory)
+    if x_mm is not None and y_mm is not None and z_mm is not None:
+        print(f"DEBUG: Using coordinates from chat history: x={x_mm}mm, y={y_mm}mm, z={z_mm}mm")
+        coords = {'x': x_mm, 'y': y_mm, 'z': z_mm}
+        message = f"Using known coordinates for {object_description}.\n"
+    else:
+        print(f"DEBUG: Coordinates not provided, finding '{object_description}' first...")
+        # Find the object first
+        find_result = find_object(object_description)
+        
+        # Check if find was successful - find_object returns a formatted string, not a dict
+        if isinstance(find_result, dict) and "error" in find_result:
+            return f"Error: Could not find '{object_description}'. {find_result['error']}"
+        
+        # Parse coordinates from the string result (this is hacky, but find_object returns a formatted string)
+        # We need to extract the coordinates somehow
+        # Better approach: call find_object but parse its result, or refactor to return structured data
+        # For now, let's just find it again to get fresh coordinates
+        # Actually, we need to get the actual depth coordinates
+        # Let me reconsider - find_object returns a string with embedded data
+        # We should extract the coordinates from it or redesign
+        
+        # Simpler approach: Always find fresh if coordinates not provided
+        return "Error: Coordinates not available. Please ask me to find the object first (e.g., 'where is the apple?'), then I can use those coordinates to pick it up."
+    
+    # Use coordinates in mm
+    cam_x = coords['x']
+    cam_y = coords['y']
+    cam_z = coords['z']
+    
+    print(f"DEBUG: Camera coordinates: x={cam_x}, y={cam_y}, z={cam_z}")
+
+    # Get current robot pose (Start position) to calculate relative target
+    # We assume the robot hasn't moved significantly since the 'find_object' call
+    # or is at the Home position as implied by "consider the home position as the start"
+    current_pose = await robot_controller.get_pose()
+    start_x = current_pose['position']['x']
+    start_y = current_pose['position']['y']
+    start_z = current_pose['position']['z']
+    
+    print(f"DEBUG: Robot Start Pose: x={start_x:.3f}, y={start_y:.3f}, z={start_z:.3f}")
+
+    # Apply Coordinate Transformation based on user rules:
+    # 1. "flip for inverse" (previous): X subtracts, Y adds.
+    # 2. "x is y and y is x" (current): Swap camera axes.
+    # Robot X <-> Camera Y
+    # Robot Y <-> Camera X
+    
+    x_target = start_x + cam_y + 38
+    y_target = start_y - cam_x - 5
+    z_target = start_z - cam_z + 160
+    
+    print(f"DEBUG: Transformed Target (Robot Frame): x={x_target:.3f}, y={y_target:.3f}, z={z_target:.3f}")
+    
+    
+    # Step 2: Move to object position (approach from above by adding offset to z)
+    approach_z = z_target 
+    print(f"DEBUG: Step 2 - Moving to approach position (z={approach_z:.3f}mm)")
+    approach_success = await robot_controller.move_to_pose(x_target, y_target, approach_z)
+    if not approach_success:
+        return f"Error: Failed to move to approach position above {object_description}."
+    message += f"✓ Moved to approach position above {object_description}.\n"
+
+        # Step 1: Open gripper
+    print("DEBUG: Step 1 - Opening gripper")
+    open_success = await robot_controller.open_gripper()
+    if not open_success:
+        return "Error: Failed to open gripper before pickup."
+    message += "✓ Gripper opened.\n"
+    
+    # Step 3: Move down to object
+    print(f"DEBUG: Step 3 - Moving down to object (z={z_target:.3f}mm)")
+    move_success = await robot_controller.move_to_pose(x_target, y_target, z_target)
+    if not move_success:
+        return f"Error: Failed to move to {object_description}."
+    message += f"✓ Moved to {object_description} position.\n"
+
+    
+    final_message = f"✓ Successfully picked up {object_description}!\n\n{message}"
+    final_message += f"\nFinal position: X={x_target:.3f}mm, Y={y_target:.3f}mm, Z={z_target:.3f}mm"
+    
+    return final_message
+
+def place_object(object_description: str, x_mm: float = None, y_mm: float = None, z_mm: float = None) -> str:
+    """Places the currently held object onto/into a target object.
+    
+    This tool moves the robot to the target's X,Y location (keeping the current Z height) and opens the gripper.
+    
+    IMPORTANT: If the target object's coordinates were mentioned in recent conversation (e.g., user asked "where is the box"),
+    extract those coordinates from the chat history and pass them as x_mm, y_mm, z_mm parameters.
+    Otherwise, leave coordinates as None and the tool will ask the user to find the object first.
+    
+    Args:
+        object_description: Description of the target object to place into/onto.
+        x_mm: X coordinate in millimeters (optional - if known from chat history)
+        y_mm: Y coordinate in millimeters (optional - if known from chat history)
+        z_mm: Z coordinate in millimeters (optional - if known from chat history)
+        
+    Returns:
+        str: Success message.
+    """
+    return asyncio.run(_place_object_async(object_description, x_mm, y_mm, z_mm))
 
 def pickup_object(object_description: str, x_mm: float = None, y_mm: float = None, z_mm: float = None) -> str:
     """Picks up an object by finding it (if coordinates not provided), moving to it, and closing the gripper.

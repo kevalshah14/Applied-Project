@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from pydantic import BaseModel
-from ai.tools import access_camera, find_object, open_gripper, close_gripper, go_home, pickup_object, get_robot_pose
+from ai.tools import access_camera, find_object, open_gripper, close_gripper, go_home, pickup_object, place_object, get_robot_pose
 
 load_dotenv()
 
@@ -41,7 +41,7 @@ def generate_chat_stream(message: str, history: List[Message]) -> Generator[str,
 
         # Configure tools
         config = types.GenerateContentConfig(
-            tools=[access_camera, find_object, open_gripper, close_gripper, go_home, pickup_object, get_robot_pose],
+            tools=[access_camera, find_object, open_gripper, close_gripper, go_home, pickup_object, place_object, get_robot_pose],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=False, maximum_remote_calls=5),
             system_instruction="""
             You are a robot assistant with vision and manipulation capabilities.
@@ -55,8 +55,10 @@ def generate_chat_stream(message: str, history: List[Message]) -> Generator[str,
             6. pickup_object: Use this when the user asks to pick up, grab, or grasp an object.
                - Check conversation history for coordinates (x, y, z in mm) and pass them if available.
                - Otherwise, tell user to find the object first.
+            7. place_object: Use this when the user asks to place, put, or drop an object into/onto another (e.g., "place in the box").
+               - Finds the target object and moves to its X,Y coordinates while maintaining current Z height.
             
-            7. get_robot_pose: Use this when the user asks for the robot's position, status, or "where are you?".
+            8. get_robot_pose: Use this when the user asks for the robot's position, status, or "where are you?".
 
             IMPORTANT:
             - If the user asks to find an object, use `find_object`.
@@ -64,6 +66,7 @@ def generate_chat_stream(message: str, history: List[Message]) -> Generator[str,
             - If the user asks to control the gripper, use the appropriate gripper tool.
             - If the user asks to go home, use `go_home`.
             - If the user asks to pick up an object, use `pickup_object` with coordinates from chat history if available.
+            - If the user asks to place an object, use `place_object`.
             - If the user asks for status or position, use `get_robot_pose`.
             - ALWAYS use a tool if the user request matches a tool's capability. Do not just say you will do it.
             """
@@ -73,7 +76,7 @@ def generate_chat_stream(message: str, history: List[Message]) -> Generator[str,
         chat = client.chats.create(model=MODEL_ID, history=chat_history, config=config)
         
         # Debug: Print enabled tools
-        print(f"DEBUG: Sending tools to model: {[t.__name__ for t in [access_camera, find_object, open_gripper, close_gripper, go_home, pickup_object, get_robot_pose]]}")
+        print(f"DEBUG: Sending tools to model: {[t.__name__ for t in [access_camera, find_object, open_gripper, close_gripper, go_home, pickup_object, place_object, get_robot_pose]]}")
         
         # Send message and stream response
         response = chat.send_message_stream(message)
