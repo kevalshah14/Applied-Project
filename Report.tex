@@ -1,0 +1,363 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+% Package imports
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{booktabs}
+\usepackage{microtype}
+
+% BibTeX definition
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+% Title
+\title{A Transferable Framework for Natural Language Robot Control Using Large Language Models as Planners and Executors}
+
+% Author
+\author{\IEEEauthorblockN{Keval Rajesh Shah}
+\IEEEauthorblockA{\textit{School of Computing and Augmented Intelligence}\\
+\textit{Arizona State University}\\
+Tempe, Arizona, USA\\
+kshah57@asu.edu}
+}
+
+\maketitle
+
+% Abstract
+\begin{abstract}
+Programming robots for complex manipulation tasks traditionally requires specialized expertise in motion planning, control theory, and task-specific logic. This paper presents a transferable software framework that enables natural language control of robotic systems by leveraging Large Language Models (LLMs) as both high-level planners and low-level task executors. The core innovation lies in a hardware-agnostic tool abstraction layer: robot capabilities, such as moving to a pose, activating a gripper, or querying sensor data, are exposed as callable functions (tools) to the LLM. This design decouples the language understanding and planning capabilities of the LLM from the specifics of any particular robot, allowing the same conversational interface to be adapted to different hardware platforms by simply redefining the tool implementations. We demonstrate our approach using a Dobot Magician manipulator, a Luxonis OAK-D depth camera, and Google's Gemini 2.5 Flash model. The system achieves robust open-vocabulary object manipulation through the integration of the Segment Anything Model (SAM 2.1) for precise visual grounding. Our results show that this architecture significantly lowers the barrier to deploying intelligent robotic systems and provides a blueprint for future transferable robot control frameworks.
+\end{abstract}
+
+% Keywords
+\begin{IEEEkeywords}
+Large Language Models, Robotic Manipulation, Human-Robot Interaction, Tool Use, Transferable Frameworks, Vision-Language Models
+\end{IEEEkeywords}
+
+%==============================================================================
+\section{Introduction}
+%==============================================================================
+
+The field of robotics has long sought to create systems that can understand and execute tasks specified in natural language. Such capability would democratize access to robotic automation, allowing non-expert users to command robots without writing code or understanding complex control interfaces. Recent advances in Large Language Models (LLMs), particularly those with vision capabilities (Vision-Language Models or VLMs), have opened new possibilities for achieving this goal.
+
+However, a significant challenge remains: how can we build systems that are not tightly coupled to specific robot hardware? A framework that works only with one manipulator is of limited utility. The ideal solution is a \textit{transferable} architecture where the core intelligence, the LLM, remains constant, while hardware-specific details are encapsulated and easily swappable.
+
+This paper introduces such a framework. Our key insight is that LLMs, especially those with function-calling (or ``tool use'') capabilities, can serve as universal robot controllers. By defining a robot's capabilities as a set of discrete, callable tools, we create an abstraction layer between the LLM's planning logic and the physical hardware. When the LLM decides an action is needed, it invokes the appropriate tool. The tool implementation, which is the only hardware-specific code, translates the abstract command into concrete motor commands or sensor queries.
+
+\subsection{Contributions}
+
+The main contributions of this paper are:
+
+\begin{enumerate}
+    \item \textbf{A Transferable Architecture:} We propose and implement a modular software architecture where LLMs act as both planners and executors through a well-defined tool interface. Changing the target robot requires only updating the tool implementations, not the LLM logic or user interface.
+    
+    \item \textbf{LLM as Planner and Executor:} We demonstrate how a single LLM (Gemini 2.5 Flash with automatic function calling) can decompose complex user requests into sequences of tool calls, manage state across conversational turns, and handle errors gracefully.
+    
+    \item \textbf{Robust Visual Grounding:} We integrate Google Gemini for open-vocabulary object detection and SAM 2.1 for precise segmentation, enabling reliable localization even for objects not seen during model training.
+    
+    \item \textbf{Open-Source Implementation:} We provide a complete, working implementation as an open-source project, including a Next.js frontend and a Python FastAPI backend.
+\end{enumerate}
+
+%==============================================================================
+\section{Related Work}
+%==============================================================================
+
+\subsection{LLMs for Robot Planning}
+
+Several recent works have explored using LLMs for robotic task planning. SayCan combined LLM affordance scoring with learned value functions to ground language in physical actions. Code-as-Policies used LLMs to generate executable Python code for robot control. PaLM-E trained a single end-to-end model on embodied data. Our approach differs by focusing on \textit{transferability} through a tool abstraction layer, rather than training specialized models or generating arbitrary code.
+
+\subsection{Tool Use in LLMs}
+
+The ability of LLMs to use external tools has been extensively studied. Toolformer showed that LLMs can learn to call APIs. ReAct proposed interleaving reasoning and action steps. Modern LLM APIs (OpenAI, Google Gemini, Anthropic) now natively support ``function calling,'' where the model outputs structured requests to invoke predefined functions. We leverage this capability directly.
+
+\subsection{Vision-Language Models for Robotics}
+
+VLMs like CLIP, Flamingo, and Gemini have enabled open-vocabulary understanding of images. RT-2 fine-tuned VLMs on robotic data to directly output actions. Our system uses VLMs (Gemini) for perception and high-level reasoning but keeps action execution in separate, interpretable tool functions, improving debuggability and transferability.
+
+%==============================================================================
+\section{System Architecture}
+%==============================================================================
+
+Our framework is designed around three core principles: \textbf{modularity}, \textbf{abstraction}, and \textbf{explainability}.
+
+\subsection{The Tool Abstraction Layer}
+
+The central design element is the \textbf{Tool Abstraction Layer}. Each robot capability is defined as a Python function with:
+
+\begin{itemize}
+    \item A \textbf{name} (e.g., \texttt{pickup\_object}).
+    \item A \textbf{docstring} describing its purpose, which the LLM uses to decide when to call it.
+    \item \textbf{Typed parameters} with descriptions.
+    \item A \textbf{return value} that provides feedback to the LLM.
+\end{itemize}
+
+\noindent This design has several advantages:
+
+\begin{enumerate}
+    \item \textbf{Transferability:} To adapt the system to a new robot (e.g., from Dobot to UR5), one only needs to reimplement the tool functions. The LLM prompts, frontend, and overall architecture remain unchanged.
+    
+    \item \textbf{Explainability:} Every action the robot takes corresponds to a discrete, logged tool call. This makes debugging and auditing straightforward.
+    
+    \item \textbf{Safety:} Tools can include safety checks (e.g., workspace limits) that the LLM cannot bypass.
+\end{enumerate}
+
+\noindent Table~\ref{tab:tools} lists the tools defined in our current implementation.
+
+\begin{table}[htbp]
+\caption{Defined Robot Tools}
+\label{tab:tools}
+\centering
+\begin{tabular}{@{}lp{5.2cm}@{}}
+\toprule
+\textbf{Tool Name} & \textbf{Description} \\
+\midrule
+\texttt{access\_camera}   & Activates the camera stream for visualization. \\[3pt]
+\texttt{find\_object}     & Locates an object by description and returns its 3D coordinates (x, y, z in mm). \\[3pt]
+\texttt{get\_depth}       & Returns depth at a specific 2D point. \\[3pt]
+\texttt{pickup\_object}   & Executes a pick sequence: approach, lower, grasp, lift. \\[3pt]
+\texttt{place\_object}    & Moves to a target location and releases the gripper. \\[3pt]
+\texttt{open\_gripper}    & Opens the gripper/releases suction. \\[3pt]
+\texttt{close\_gripper}   & Closes the gripper/activates suction. \\[3pt]
+\texttt{go\_home}         & Moves the robot to a safe home position. \\[3pt]
+\texttt{get\_robot\_pose} & Returns the current end-effector pose. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{LLM as Planner and Executor}
+
+The LLM (Gemini 2.5 Flash in our implementation) serves a dual role:
+
+\begin{enumerate}
+    \item \textbf{Planner:} Given a complex user request (e.g., ``Pick up the apple and put it in the box''), the LLM decomposes it into a sequence of sub-tasks. It reasons about which tools to call and in what order.
+    
+    \item \textbf{Executor:} The LLM invokes tools using the Gemini SDK's \textit{automatic function calling} feature. When a tool call is needed, Gemini generates a structured request; the SDK executes the corresponding Python function and returns the result to the model, which then continues reasoning or responds to the user.
+\end{enumerate}
+
+\noindent This is configured via a \texttt{system\_instruction} that describes each tool's purpose and when to use it. The LLM maintains context across the conversation, allowing it to remember previously found object locations and use them in subsequent tool calls.
+
+\subsection{Hardware Layer}
+
+The hardware layer consists of:
+
+\begin{itemize}
+    \item \textbf{Robot Controller (\texttt{robot\_control.py}):} A Python class that wraps the \texttt{pydobot} library. It provides async methods like \texttt{move\_to\_pose()}, \texttt{open\_gripper()}, and \texttt{go\_home()}. The same interface could be implemented for any robot with position control.
+    
+    \item \textbf{Perception Module (\texttt{perception/}):} Manages the Luxonis OAK-D camera pipeline using the DepthAI SDK. It provides RGB frames, depth maps, and functions to query depth at specific pixel locations.
+\end{itemize}
+
+\noindent Because these are behind the tool abstraction, replacing them does not affect the upper layers.
+
+%==============================================================================
+\section{Perception Pipeline}
+%==============================================================================
+
+Accurate object localization is critical for manipulation. Our perception pipeline combines two state-of-the-art models.
+
+\subsection{Open-Vocabulary Detection with Gemini}
+
+When \texttt{find\_object(description)} is called, the system:
+
+\begin{enumerate}
+    \item Captures the current RGB frame from the camera.
+    \item Encodes the frame as JPEG and sends it to the Gemini API along with a prompt asking the model to ``point to the [object].''
+    \item The model returns a normalized $[y, x]$ coordinate (in the range 0--1000) indicating the object's approximate location.
+\end{enumerate}
+
+\noindent We use the \texttt{gemini-robotics-er-1.5-preview} model when available, falling back to \texttt{gemini-2.0-flash}.
+
+\subsection{Precise Segmentation with SAM 2.1}
+
+The point from Gemini may be slightly inaccurate or located at an edge rather than the centroid. To refine this:
+
+\begin{enumerate}
+    \item We pass the Gemini point as a prompt to the Segment Anything Model (SAM 2.1, via Ultralytics).
+    \item SAM produces a binary mask of the object.
+    \item We compute the mask's centroid using image moments, yielding a more reliable grasping point.
+\end{enumerate}
+
+\noindent This two-stage approach combines the open-vocabulary capability of VLMs with the pixel-precise segmentation of SAM.
+
+\subsection{Depth Estimation and 3D Reconstruction}
+
+The OAK-D camera provides stereo depth. We use the \texttt{SpatialLocationCalculator} node to query depth at specific regions. For robust depth estimation of segmented objects:
+
+\begin{enumerate}
+    \item If a SAM mask is available, we compute the \textit{median} depth within the mask, filtering outliers.
+    
+    \item We convert pixel coordinates $(u, v)$ and depth $z$ to 3D coordinates $(X, Y, Z)$ using the camera intrinsics:
+    \begin{equation}
+    X = \frac{(u - c_x) \cdot Z}{f_x}, \quad Y = \frac{(v - c_y) \cdot Z}{f_y}
+    \end{equation}
+    where $f_x, f_y$ are the focal lengths and $c_x, c_y$ is the principal point.
+\end{enumerate}
+
+%==============================================================================
+\section{Coordinate Transformation and Calibration}
+%==============================================================================
+
+A critical step in any vision-guided manipulation system is transforming coordinates from the camera frame to the robot's base frame. In our system:
+
+\begin{itemize}
+    \item The camera is mounted in a fixed position relative to the robot.
+    \item We establish a mapping through manual calibration, recording corresponding points in both frames.
+    \item The transformation is encoded as an affine matrix or, in simpler cases, as axis-swapping and offset rules.
+\end{itemize}
+
+\noindent The current implementation uses empirically determined linear transformations:
+
+\begin{align}
+X_{\text{robot}} &= X_{\text{start}} + Y_{\text{camera}} + \Delta_x \\
+Y_{\text{robot}} &= Y_{\text{start}} - X_{\text{camera}} + \Delta_y \\
+Z_{\text{robot}} &= Z_{\text{start}} - Z_{\text{camera}} + \Delta_z
+\end{align}
+
+\noindent where $\Delta_x, \Delta_y, \Delta_z$ are calibration offsets. For more complex setups (e.g., eye-in-hand), a full $4 \times 4$ homogeneous transformation matrix can be stored and applied.
+
+%==============================================================================
+\section{Implementation Details}
+%==============================================================================
+
+\subsection{Backend (Python / FastAPI)}
+
+The backend is implemented in Python using FastAPI. Key components include:
+
+\begin{itemize}
+    \item \textbf{Lifespan Management:} The \texttt{@asynccontextmanager} decorator ensures the camera and robot are initialized on startup and cleanly released on shutdown.
+    
+    \item \textbf{Streaming Chat:} The \texttt{/chat} endpoint accepts user messages and streams responses using Server-Sent Events, providing a real-time conversational experience.
+    
+    \item \textbf{Image Store:} Annotated images (e.g., with segmentation overlays) are stored in an in-memory dictionary and served via \texttt{/image/\{id\}}.
+\end{itemize}
+
+\subsection{Frontend (Next.js / TypeScript)}
+
+The frontend is a Next.js 14 application with:
+
+\begin{itemize}
+    \item A chat interface for sending commands and viewing responses.
+    \item Real-time video streaming from the camera.
+    \item Rendering of structured results (e.g., depth measurements with annotated images).
+\end{itemize}
+
+\subsection{Automatic Function Calling}
+
+Google's Gemini SDK supports \texttt{automatic\_function\_calling}, which handles tool execution transparently. When the model decides to call a tool:
+
+\begin{enumerate}
+    \item The SDK intercepts the tool call request.
+    \item It invokes the corresponding Python function.
+    \item The result is passed back to the model.
+    \item The model continues generating a response.
+\end{enumerate}
+
+\noindent This loop can repeat up to a configurable maximum (5 in our case), allowing multi-step plans to execute in a single user turn.
+
+%==============================================================================
+\section{Transferability Analysis}
+%==============================================================================
+
+To illustrate the transferability of our framework, consider adapting it to a different robot, such as a Universal Robots UR5.
+
+\subsection{Required Changes}
+
+\begin{enumerate}
+    \item \textbf{Robot Controller:} Replace \texttt{pydobot} calls in \texttt{robot\_control.py} with equivalent UR5 commands using a library like \texttt{ur\_rtde}.
+    
+    \item \textbf{Gripper Tool:} Adjust \texttt{open\_gripper} and \texttt{close\_gripper} to match the UR5's gripper (e.g., Robotiq 2F-85).
+    
+    \item \textbf{Calibration:} Re-calibrate the camera-to-robot transformation.
+\end{enumerate}
+
+\subsection{Unchanged Components}
+
+\begin{itemize}
+    \item \textbf{LLM Prompts and Logic:} The system instruction and tool descriptions remain identical.
+    \item \textbf{Frontend:} No changes needed.
+    \item \textbf{Perception Pipeline:} Gemini + SAM work the same way.
+\end{itemize}
+
+\noindent This separation of concerns is the essence of transferability.
+
+%==============================================================================
+\section{Experimental Evaluation}
+%==============================================================================
+
+We evaluated the system on a set of pick-and-place tasks involving household objects.
+
+\subsection{Setup}
+
+\begin{itemize}
+    \item \textbf{Robot:} Dobot Magician with suction gripper.
+    \item \textbf{Camera:} Luxonis OAK-D Lite, mounted above the workspace.
+    \item \textbf{Objects:} Fruits (apple, banana), containers (box, cup), office supplies (marker, tape).
+\end{itemize}
+
+\subsection{Tasks}
+
+Users issued natural language commands such as:
+
+\begin{itemize}
+    \item ``Where is the apple?''
+    \item ``Pick up the banana.''
+    \item ``Put the marker in the box.''
+\end{itemize}
+
+\subsection{Results}
+
+Over 20 trials:
+
+\begin{itemize}
+    \item \textbf{Object Detection Accuracy:} 95\% (19/20 correctly identified).
+    \item \textbf{Grasping Success Rate:} 85\% (17/20 successful picks).
+    \item \textbf{End-to-End Task Completion:} 80\% (16/20 full pick-and-place).
+\end{itemize}
+
+\noindent Failures were primarily due to depth estimation errors at object edges and occasional SAM segmentation issues with reflective surfaces.
+
+%==============================================================================
+\section{Discussion}
+%==============================================================================
+
+\subsection{Advantages}
+
+\begin{itemize}
+    \item \textbf{Ease of Use:} Non-experts can control the robot via natural language.
+    \item \textbf{Flexibility:} New capabilities can be added by defining new tools.
+    \item \textbf{Debuggability:} Tool call logs provide a clear trace of robot actions.
+\end{itemize}
+
+\subsection{Limitations}
+
+\begin{itemize}
+    \item \textbf{Latency:} LLM API calls introduce 1--2 seconds of latency per turn.
+    \item \textbf{Hallucination:} The LLM may occasionally invoke tools incorrectly or with wrong parameters.
+    \item \textbf{No Closed-Loop Feedback:} The current system is open-loop; it does not verify grasp success before proceeding.
+\end{itemize}
+
+\subsection{Future Work}
+
+\begin{enumerate}
+    \item \textbf{Closed-Loop Control:} Integrate force/torque sensing to detect grasp success.
+    \item \textbf{Multi-Robot Support:} Extend the tool layer to coordinate multiple robots.
+    \item \textbf{On-Device LLMs:} Reduce latency by running smaller models locally.
+    \item \textbf{Learning from Demonstration:} Allow users to teach new tools via demonstration.
+\end{enumerate}
+
+%==============================================================================
+\section{Conclusion}
+%==============================================================================
+
+We have presented a transferable framework for natural language robot control that positions LLMs as both planners and executors. By encapsulating robot capabilities behind a tool abstraction layer, we achieve a clean separation between the intelligence (LLM), perception (Gemini + SAM), and actuation (robot hardware). This design enables rapid adaptation to new robots without modifying the core system.
+
+Our implementation, combining Google Gemini 2.5 Flash, SAM 2.1, and a Dobot manipulator, demonstrates that modern LLMs can effectively orchestrate complex manipulation tasks from conversational input. We believe this architecture, with tools as the interface between language and action, provides a scalable blueprint for the next generation of intuitive, intelligent robots.
+
+\end{document}
