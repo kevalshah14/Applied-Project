@@ -624,9 +624,9 @@ async def _pickup_object_async(object_description: str, x_mm: float = None, y_mm
     # Robot X <-> Camera Y
     # Robot Y <-> Camera X
     
-    x_target = start_x + cam_y + 38
-    y_target = start_y - cam_x - 5
-    z_target = start_z - cam_z + 60
+    x_target = start_x + cam_y + 40
+    y_target = start_y - cam_x - 3
+    z_target = start_z - cam_z + 50
     
     print(f"DEBUG: Transformed Target (Robot Frame): x={x_target:.3f}, y={y_target:.3f}, z={z_target:.3f}")
     
