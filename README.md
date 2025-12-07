@@ -9,6 +9,12 @@ A **transferable framework** for controlling robots using natural language, powe
 
 **Repository:** [https://github.com/kevalshah14/Applied-Project](https://github.com/kevalshah14/Applied-Project)
 
+## Demo
+
+https://github.com/user-attachments/assets/e1d4c69c-2fa4-4dec-5927-3c969aa2359f
+
+*(Note: If the video above doesn't play, you can view the [full demo file](Report/Applied%20Project%20Demo.mp4))*
+
 ## Overview
 
 This project enables users to control robotic systems through conversational natural language commands. The core innovation is a **tool abstraction layer** that decouples the LLM's intelligence from robot-specific hardware, making the system easily transferable to different robots.
