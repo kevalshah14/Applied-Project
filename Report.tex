@@ -28,7 +28,7 @@
 \begin{document}
 
 % Title
-\title{A Transferable Framework for Natural Language Robot Control Using Large Language Models as Planners and Executors}
+\title{From Tools to Policies: A Progressive Framework for Natural Language Robot Control with LLM-Orchestrated Imitation Learning}
 
 % Author
 \author{\IEEEauthorblockN{Keval Rajesh Shah}
@@ -43,12 +43,12 @@ kshah57@asu.edu\\
 
 % Abstract
 \begin{abstract}
-Programming robots for complex manipulation tasks traditionally requires specialized expertise in motion planning, control theory, and task-specific logic. This paper presents a transferable software framework that enables natural language control of robotic systems by leveraging Large Language Models (LLMs) as both high-level planners and low-level task executors. The core innovation lies in a hardware-agnostic tool abstraction layer: robot capabilities, such as moving to a pose, activating a gripper, or querying sensor data, are exposed as callable functions (tools) to the LLM. This design decouples the language understanding and planning capabilities of the LLM from the specifics of any particular robot, allowing the same conversational interface to be adapted to different hardware platforms by simply redefining the tool implementations. We demonstrate our approach using a Dobot Magician manipulator, a Luxonis OAK-D depth camera, and Google's Gemini 2.5 Flash model. The system achieves robust open-vocabulary object manipulation through the integration of the Segment Anything Model (SAM 2.1) for precise visual grounding. Our results show that this architecture significantly lowers the barrier to deploying intelligent robotic systems and provides a blueprint for future transferable robot control frameworks.
+Programming robots for complex manipulation tasks traditionally requires specialized expertise in motion planning, control theory, and task-specific logic. This paper presents a progressive framework for natural language robot control that evolves from explicit tool-based execution to learned policy invocation. In the initial phase, a Large Language Model (LLM) serves as both planner and executor, decomposing user commands into sequences of callable tools (e.g., find object, pickup, place). As successful executions accumulate, the system collects demonstration data in LeRobot format, enabling training of ACT (Action Chunking with Transformers) policies. Once sufficient data is gathered for a task, the LLM transitions from directly invoking tools to orchestrating trained policies, becoming a meta-controller that selects between tool-based execution for novel tasks and policy-based execution for learned tasks. This progressive architecture combines the flexibility of LLM-based planning with the speed and robustness of learned policies. We demonstrate our approach using a Dobot Magician manipulator, a Luxonis OAK-D camera, Google's Gemini 2.5 Flash model, and the Segment Anything Model (SAM 2.1) for visual grounding. Our results show that this self-improving architecture provides a blueprint for robots that become progressively more capable while maintaining the ability to handle novel situations.
 \end{abstract}
 
 % Keywords
 \begin{IEEEkeywords}
-Large Language Models, Robotic Manipulation, Human-Robot Interaction, Tool Use, Transferable Frameworks, Vision-Language Models
+Large Language Models, Imitation Learning, Vision-Language-Action Models, Robotic Manipulation, Tool Use, ACT, Progressive Learning
 \end{IEEEkeywords}
 
 %==============================================================================
@@ -57,22 +57,34 @@ Large Language Models, Robotic Manipulation, Human-Robot Interaction, Tool Use, 
 
 The field of robotics has long sought to create systems that can understand and execute tasks specified in natural language. Such capability would democratize access to robotic automation, allowing non-expert users to command robots without writing code or understanding complex control interfaces. Recent advances in Large Language Models (LLMs), particularly those with vision capabilities (Vision-Language Models or VLMs), have opened new possibilities for achieving this goal.
 
-However, a significant challenge remains: how can we build systems that are not tightly coupled to specific robot hardware? A framework that works only with one manipulator is of limited utility. The ideal solution is a \textit{transferable} architecture where the core intelligence, the LLM, remains constant, while hardware-specific details are encapsulated and easily swappable.
+However, two significant challenges remain. First, how can we build systems that are not tightly coupled to specific robot hardware? Second, how can we combine the flexibility of LLM-based reasoning with the speed and robustness of learned policies? A framework that works only with one manipulator, or that cannot improve with experience, is of limited practical utility.
 
-This paper introduces such a framework. Our key insight is that LLMs, especially those with function-calling (or ``tool use'') capabilities, can serve as universal robot controllers. By defining a robot's capabilities as a set of discrete, callable tools, we create an abstraction layer between the LLM's planning logic and the physical hardware. When the LLM decides an action is needed, it invokes the appropriate tool. The tool implementation, which is the only hardware-specific code, translates the abstract command into concrete motor commands or sensor queries.
+This paper introduces a \textit{progressive} framework that addresses both challenges. Our key insight is that LLMs can serve not only as robot controllers through tool invocation, but also as meta-controllers that orchestrate learned policies. The system operates in two phases:
+
+\begin{enumerate}
+    \item \textbf{Tool-Based Phase:} The LLM uses explicit tools (e.g., \texttt{find\_object}, \texttt{pickup\_object}) to execute tasks. Each successful execution is recorded as a demonstration.
+    
+    \item \textbf{Policy-Based Phase:} Once sufficient demonstrations are collected for a task, the data is used to train an ACT policy. The LLM then shifts from invoking low-level tools to calling \texttt{execute\_policy("task\_name")}, delegating execution to the learned policy.
+\end{enumerate}
+
+\noindent This progressive architecture creates a self-improving system: the robot becomes faster and more robust at frequently performed tasks through imitation learning, while maintaining the flexibility to handle novel situations through explicit tool use.
 
 \subsection{Contributions}
 
 The main contributions of this paper are:
 
 \begin{enumerate}
-    \item \textbf{A Transferable Architecture:} We propose and implement a modular software architecture where LLMs act as both planners and executors through a well-defined tool interface. Changing the target robot requires only updating the tool implementations, not the LLM logic or user interface.
+    \item \textbf{Progressive Learning Architecture:} We propose a framework where LLMs transition from tool-based execution to policy invocation as experience accumulates. The LLM evolves from executor to orchestrator.
     
-    \item \textbf{LLM as Planner and Executor:} We demonstrate how a single LLM (Gemini 2.5 Flash with automatic function calling) can decompose complex user requests into sequences of tool calls, manage state across conversational turns, and handle errors gracefully.
+    \item \textbf{Tool Abstraction Layer:} We implement a modular architecture where robot capabilities are exposed as callable tools, enabling hardware-agnostic control and transparent demonstration collection.
     
-    \item \textbf{Robust Visual Grounding:} We integrate Google Gemini for open-vocabulary object detection and SAM 2.1 for precise segmentation, enabling reliable localization even for objects not seen during model training.
+    \item \textbf{Data Collection Pipeline:} We provide tools to record demonstrations in HDF5 format and convert them to LeRobot format for training ACT (Action Chunking with Transformers) policies.
     
-    \item \textbf{Open-Source Implementation:} We provide a complete, working implementation as an open-source project, including a Next.js frontend and a Python FastAPI backend. The source code is available at: \url{https://github.com/kevalshah14/Applied-Project}.
+    \item \textbf{LLM as Meta-Controller:} We demonstrate how the LLM can intelligently select between tool-based execution (for novel tasks) and policy-based execution (for learned tasks).
+    
+    \item \textbf{Robust Visual Grounding:} We integrate Google Gemini for open-vocabulary object detection and SAM 2.1 for precise segmentation.
+    
+    \item \textbf{Open-Source Implementation:} We provide a complete implementation including data collection, format conversion, a Next.js frontend, and a Python FastAPI backend. Source code: \url{https://github.com/kevalshah14/Applied-Project}.
 \end{enumerate}
 
 %==============================================================================
@@ -81,21 +93,25 @@ The main contributions of this paper are:
 
 \subsection{LLMs for Robot Planning}
 
-Several recent works have explored using LLMs for robotic task planning. SayCan combined LLM affordance scoring with learned value functions to ground language in physical actions. Code-as-Policies used LLMs to generate executable Python code for robot control. PaLM-E trained a single end-to-end model on embodied data. Our approach differs by focusing on \textit{transferability} through a tool abstraction layer, rather than training specialized models or generating arbitrary code.
+Several recent works have explored using LLMs for robotic task planning. SayCan combined LLM affordance scoring with learned value functions to ground language in physical actions. Code-as-Policies used LLMs to generate executable Python code for robot control. PaLM-E trained a single end-to-end model on embodied data. Our approach differs by combining LLM-based planning with a pathway to learned execution through imitation learning.
 
 \subsection{Tool Use in LLMs}
 
-The ability of LLMs to use external tools has been extensively studied. Toolformer showed that LLMs can learn to call APIs. ReAct proposed interleaving reasoning and action steps. Modern LLM APIs (OpenAI, Google Gemini, Anthropic) now natively support ``function calling,'' where the model outputs structured requests to invoke predefined functions. We leverage this capability directly.
+The ability of LLMs to use external tools has been extensively studied. Toolformer showed that LLMs can learn to call APIs. ReAct proposed interleaving reasoning and action steps. Modern LLM APIs (OpenAI, Google Gemini, Anthropic) now natively support ``function calling,'' where the model outputs structured requests to invoke predefined functions. We extend this paradigm by treating learned policies as callable tools, enabling the LLM to invoke trained behaviors alongside explicit manipulation primitives.
 
 \subsection{Vision-Language Models for Robotics}
 
-VLMs like CLIP, Flamingo, and Gemini have enabled open-vocabulary understanding of images. RT-2 fine-tuned VLMs on robotic data to directly output actions. Our system uses VLMs (Gemini) for perception and high-level reasoning but keeps action execution in separate, interpretable tool functions, improving debuggability and transferability.
+VLMs like CLIP, Flamingo, and Gemini have enabled open-vocabulary understanding of images. RT-2 fine-tuned VLMs on robotic data to directly output actions. Our system uses VLMs (Gemini) for perception and high-level reasoning while leveraging tool-based execution for transparency and debuggability.
+
+\subsection{Imitation Learning and ACT Policies}
+
+Recent advances in imitation learning have produced effective approaches for learning manipulation policies from demonstrations. Action Chunking with Transformers (ACT), introduced in the ALOHA project, uses a transformer architecture to predict sequences of actions from visual observations. ACT has demonstrated strong performance on bimanual manipulation tasks and can be trained with relatively few demonstrations (50-100 episodes). The LeRobot framework from HuggingFace provides standardized tools for collecting, storing, and training on robot demonstration data. Our framework bridges the gap between LLM-based control and learned ACT policies: the LLM provides flexible, interpretable control for novel tasks while collecting demonstration data that enables training specialized ACT policies for improved performance on repeated tasks.
 
 %==============================================================================
 \section{System Architecture}
 %==============================================================================
 
-Our framework is designed around three core principles: \textbf{modularity}, \textbf{abstraction}, and \textbf{explainability}.
+Our framework is designed around four core principles: \textbf{modularity}, \textbf{abstraction}, \textbf{explainability}, and \textbf{progressive improvement}.
 
 \subsection{The Tool Abstraction Layer}
 
@@ -116,6 +132,8 @@ The central design element is the \textbf{Tool Abstraction Layer}. Each robot ca
     \item \textbf{Explainability:} Every action the robot takes corresponds to a discrete, logged tool call. This makes debugging and auditing straightforward.
     
     \item \textbf{Safety:} Tools can include safety checks (e.g., workspace limits) that the LLM cannot bypass.
+    
+    \item \textbf{Demonstration Collection:} Tool calls provide natural segmentation points for recording demonstrations. Each successful tool sequence can be saved as training data.
 \end{enumerate}
 
 \noindent Table~\ref{tab:tools} lists the tools defined in our current implementation.
@@ -136,22 +154,26 @@ The central design element is the \textbf{Tool Abstraction Layer}. Each robot ca
 \texttt{open\_gripper}    & Opens the gripper/releases suction. \\[3pt]
 \texttt{close\_gripper}   & Closes the gripper/activates suction. \\[3pt]
 \texttt{go\_home}         & Moves the robot to a safe home position. \\[3pt]
-\texttt{get\_robot\_pose} & Returns the current end-effector pose. \\
+\texttt{get\_robot\_pose} & Returns the current end-effector pose. \\[3pt]
+\midrule
+\texttt{execute\_policy}  & Invokes a trained ACT policy for a specified task. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{LLM as Planner and Executor}
+\subsection{LLM as Planner, Executor, and Meta-Controller}
 
-The LLM (Gemini 2.5 Flash in our implementation) serves a dual role:
+The LLM (Gemini 2.5 Flash in our implementation) serves a role that evolves over time:
 
 \begin{enumerate}
-    \item \textbf{Planner:} Given a complex user request (e.g., ``Pick up the apple and put it in the box''), the LLM decomposes it into a sequence of sub-tasks. It reasons about which tools to call and in what order.
+    \item \textbf{Planner:} Given a complex user request (e.g., ``Pick up the apple and put it in the box''), the LLM decomposes it into a sequence of sub-tasks.
     
-    \item \textbf{Executor:} The LLM invokes tools using the Gemini SDK's \textit{automatic function calling} feature. When a tool call is needed, Gemini generates a structured request; the SDK executes the corresponding Python function and returns the result to the model, which then continues reasoning or responds to the user.
+    \item \textbf{Executor (Initial Phase):} The LLM invokes tools using the Gemini SDK's \textit{automatic function calling} feature. Each successful execution is recorded as a demonstration.
+    
+    \item \textbf{Meta-Controller (After Policy Training):} Once a ACT policy is trained for a task, the LLM can invoke \texttt{execute\_policy("task\_name")} instead of individual tools. The LLM chooses between tool-based and policy-based execution based on task familiarity and user preferences.
 \end{enumerate}
 
-\noindent This is configured via a \texttt{system\_instruction} that describes each tool's purpose and when to use it. The LLM maintains context across the conversation, allowing it to remember previously found object locations and use them in subsequent tool calls.
+\noindent This is configured via a \texttt{system\_instruction} that describes each tool's purpose and when to use it. The LLM maintains context across the conversation, allowing it to remember previously found object locations and use them in subsequent tool calls or policy invocations.
 
 \subsection{Hardware Layer}
 
@@ -352,13 +374,66 @@ Over 20 trials:
     \item \textbf{No Closed-Loop Feedback:} The current system is open-loop; it does not verify grasp success before proceeding.
 \end{itemize}
 
+\subsection{Data Collection for Imitation Learning}
+
+While the LLM-based tool abstraction enables intuitive natural language control, we recognize that explicit tool-based manipulation has inherent limitations in terms of speed and robustness. To address this, we have developed a data collection pipeline that enables the system to progressively improve through imitation learning, specifically by training ACT (Action Chunking with Transformers) policies.
+
+\subsubsection{Progressive Learning Architecture}
+
+Our architecture implements a progressive transition from tool-based execution to learned policy execution:
+
+\begin{enumerate}
+    \item \textbf{Initial Phase (Tool-Based):} The LLM uses explicit tools (e.g., \texttt{find\_object}, \texttt{pickup\_object}) to execute tasks. Each successful execution is recorded as a demonstration.
+    
+    \item \textbf{Data Accumulation:} As the robot performs tasks via tools, the demonstration data accumulates in LeRobot format, building a task-specific dataset.
+    
+    \item \textbf{Policy Training:} Once sufficient demonstrations are collected for a task (typically 50+ episodes), the data is used to train an ACT policy specialized for that task.
+    
+    \item \textbf{Policy Invocation Phase:} For well-demonstrated tasks, the LLM shifts from using low-level tools to invoking the trained ACT policy. The LLM becomes a meta-controller that selects between tool-based execution (for novel tasks) and policy-based execution (for learned tasks).
+\end{enumerate}
+
+\subsubsection{Data Collection Pipeline}
+
+The data collection system records demonstrations in HDF5 format, capturing:
+
+\begin{itemize}
+    \item \textbf{Robot State:} End-effector position (x, y, z), rotation (r), and gripper state (suction on/off) at 20 Hz.
+    \item \textbf{Visual Observations:} RGB images from the OAK-D camera, resized to $224 \times 224$ pixels for model compatibility.
+    \item \textbf{Actions:} Computed as the change in state between consecutive timesteps.
+\end{itemize}
+
+\noindent The kinesthetic teaching mode allows users to physically guide the robot through a demonstration while the system records all sensor data. Alternatively, demonstrations can be collected automatically during successful tool-based executions.
+
+\subsubsection{LeRobot Format and ACT Training}
+
+The collected HDF5 episodes are converted to LeRobot format, enabling compatibility with the ACT training pipeline. Training ACT on task-specific demonstrations creates policies that:
+
+\begin{itemize}
+    \item Execute manipulation tasks significantly faster than tool-based approaches.
+    \item Generalize to variations in object appearance and placement.
+    \item Handle continuous, reactive control that is difficult to achieve with discrete tool calls.
+\end{itemize}
+
+\subsubsection{LLM as Meta-Controller}
+
+The key insight of this architecture is that the LLM evolves from executor to orchestrator. Initially, it directly invokes tools like \texttt{pickup\_object(x, y, z)}. After policy training, it can invoke a higher-level action: \texttt{execute\_policy("pick\_red\_cube")}. The LLM decides which approach to use based on:
+
+\begin{itemize}
+    \item Whether a trained policy exists for the requested task.
+    \item The user's preference for speed vs. interpretability.
+    \item Novel task components that require tool-based exploration.
+\end{itemize}
+
+\noindent This creates a self-improving system where the robot becomes progressively more capable as it accumulates experience, while maintaining the flexibility to handle novel situations through explicit tool use.
+
 \subsection{Future Work}
 
 \begin{enumerate}
     \item \textbf{Closed-Loop Control:} Integrate force/torque sensing to detect grasp success.
     \item \textbf{Multi-Robot Support:} Extend the tool layer to coordinate multiple robots.
     \item \textbf{On-Device LLMs:} Reduce latency by running smaller models locally.
-    \item \textbf{Learning from Demonstration:} Allow users to teach new tools via demonstration.
+    \item \textbf{Automatic Policy Selection:} Implement a policy registry that the LLM can query to determine which tasks have sufficient training data for policy-based execution.
+    \item \textbf{Continuous Learning:} Enable the system to automatically collect demonstrations during tool-based execution and trigger policy retraining when sufficient new data is available.
 \end{enumerate}
 
 %==============================================================================
@@ -367,6 +442,6 @@ Over 20 trials:
 
 We have presented a transferable framework for natural language robot control that positions LLMs as both planners and executors. By encapsulating robot capabilities behind a tool abstraction layer, we achieve a clean separation between the intelligence (LLM), perception (Gemini + SAM), and actuation (robot hardware). This design enables rapid adaptation to new robots without modifying the core system.
 
-Our implementation, combining Google Gemini 2.5 Flash, SAM 2.1, and a Dobot manipulator, demonstrates that modern LLMs can effectively orchestrate complex manipulation tasks from conversational input. We believe this architecture, with tools as the interface between language and action, provides a scalable blueprint for the next generation of intuitive, intelligent robots.
+Our implementation, combining Google Gemini 2.5 Flash, SAM 2.1, and a Dobot manipulator, demonstrates that modern LLMs can effectively orchestrate complex manipulation tasks from conversational input. Furthermore, our data collection pipeline enables a progressive transition from tool-based to policy-based execution, where the LLM evolves from directly executing tools to orchestrating trained ACT policies for improved speed and robustness. We believe this architecture, with tools as the interface between language and action and learned policies for refined execution, provides a scalable blueprint for the next generation of intuitive, intelligent, and continuously improving robots.
 
 \end{document}

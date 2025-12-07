@@ -68,16 +68,20 @@ Applied-Project/
 │   │   ├── stream.py        # Camera streaming manager
 │   │   ├── depth.py         # Depth estimation utilities
 │   │   └── init.py          # DepthAI pipeline setup
-│   └── controls/
-│       ├── __init__.py      # Robot controller export
-│       └── robot_control.py # Dobot hardware interface
+│   ├── controls/
+│   │   ├── __init__.py      # Robot controller export
+│   │   └── robot_control.py # Dobot hardware interface
+│   └── data_collection/     # Data collection for ACT fine-tuning
+│       ├── __init__.py      # Module exports
+│       ├── collect_data.py  # Record demonstrations in HDF5
+│       └── convert_to_lerobot.py  # Convert to LeRobot format
 ├── frontend/
 │   ├── src/
 │   │   ├── app/             # Next.js app router pages
 │   │   └── components/      # React components
 │   ├── package.json
 │   └── tailwind.config.js
-├── IEEE_Project_Report.tex  # Academic paper
+├── Report.tex               # Academic paper
 └── README.md
 ```
 
@@ -193,6 +197,104 @@ The key design principle is **hardware abstraction**. To adapt this system to a 
 - Frontend interface
 - Perception pipeline (Gemini + SAM)
 
+## Data Collection for ACT Fine-tuning
+
+This project includes a data collection pipeline that enables **progressive improvement** through imitation learning. The LLM initially uses tools for manipulation, then transitions to invoking trained **ACT** policies once sufficient demonstration data is collected.
+
+### Progressive Learning Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Phase 1: Tool-Based Execution                │
+│  User: "Pick up the red cube"                                   │
+│  LLM → find_object() → pickup_object() → [Success recorded]    │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+                    [50+ demonstrations collected]
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    Phase 2: Policy Training                     │
+│  HDF5 episodes → LeRobot format → Fine-tune ACT                │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    Phase 3: Policy Invocation                   │
+│  User: "Pick up the red cube"                                   │
+│  LLM → execute_policy("pick_red_cube") → [Faster execution]    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Capabilities
+
+| Phase | Approach | Speed | Flexibility |
+|-------|----------|-------|-------------|
+| Initial | Tool-based | Slower | High (any task) |
+| Learned | Policy-based | Fast | Task-specific |
+| Hybrid | LLM decides | Optimal | Best of both |
+
+### Collecting Demonstrations
+
+```bash
+cd backend/data_collection
+
+# Collect 50 episodes for a pick-and-place task
+python collect_data.py \
+    --task "pick_red_cube" \
+    --num-episodes 50 \
+    --output-dir data/dobot/demonstrations
+```
+
+**During collection:**
+1. Press Enter when ready to start each episode
+2. Physically guide the robot through the demonstration (kinesthetic teaching)
+3. Press Ctrl+C when the demonstration is complete
+4. Repeat for all episodes
+
+### Converting to LeRobot Format
+
+```bash
+python convert_to_lerobot.py \
+    --input-dir data/dobot/demonstrations \
+    --repo-id your_username/dobot_pick_cube \
+    --task "pick red cube"
+```
+
+**Options:**
+- `--push-to-hub` – Upload dataset to HuggingFace Hub
+- `--mode video` – Use video compression for smaller files
+
+### Data Format
+
+Each episode records:
+| Data | Shape | Description |
+|------|-------|-------------|
+| Robot State | (5,) | x, y, z, r, suction |
+| Image | (224, 224, 3) | RGB from OAK-D camera |
+| Action | (5,) | Change in state (delta) |
+
+### Training ACT Policies
+
+After collecting and converting data, train ACT policies:
+
+```bash
+# See: https://github.com/huggingface/lerobot
+# ACT training example:
+python lerobot/scripts/train.py \
+    policy=act \
+    env=your_env \
+    dataset_repo_id=your_username/dobot_pick_cube
+```
+
+### LLM as Meta-Controller
+
+Once policies are trained, the LLM evolves from executor to orchestrator:
+
+- **Novel tasks** → LLM uses tools (`find_object`, `pickup_object`, etc.)
+- **Learned tasks** → LLM invokes policy (`execute_policy("pick_red_cube")`)
+- **Hybrid tasks** → LLM uses tools for novel parts, policies for learned parts
+
+This creates a **self-improving system** where the robot becomes progressively more capable while maintaining flexibility for new situations.
+
 ## API Endpoints
 
 | Endpoint | Method | Description |
@@ -231,3 +333,5 @@ This project is licensed under the MIT License.
 - Meta AI for Segment Anything Model
 - Luxonis for DepthAI SDK
 - Dobot for pydobot library
+- Stanford/Google for ACT (Action Chunking with Transformers)
+- HuggingFace for LeRobot framework
