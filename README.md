@@ -7,13 +7,10 @@ A **transferable framework** for controlling robots using natural language, powe
 ![Next.js](https://img.shields.io/badge/Next.js-14-black.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-**Repository:** [https://github.com/kevalshah14/Applied-Project](https://github.com/kevalshah14/Applied-Project)
-
 ## Demo
 
-https://github.com/user-attachments/assets/e1d4c69c-2fa4-4dec-5927-3c969aa2359f
+[Watch the Project Demo Video](https://github.com/kevalshah14/Applied-Project/blob/master/Report/Applied%20Project%20Demo.mp4)
 
-*(Note: If the video above doesn't play, you can view the [full demo file](Report/Applied%20Project%20Demo.mp4))*
 
 ## Overview
 
