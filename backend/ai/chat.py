@@ -8,7 +8,6 @@ from ai.tools import access_camera, find_object, open_gripper, close_gripper, go
 
 load_dotenv()
 
-# Initialize Gemini Client
 api_key = os.getenv("APIKEY")
 if not api_key:
     print("Warning: APIKEY environment variable not set")
@@ -31,7 +30,6 @@ def generate_chat_stream(message: str, history: List[Message]) -> Generator[str,
         return
 
     try:
-        # Convert history to the format expected by the SDK
         chat_history = []
         for msg in history:
             chat_history.append(types.Content(
@@ -39,7 +37,6 @@ def generate_chat_stream(message: str, history: List[Message]) -> Generator[str,
                 parts=[types.Part.from_text(text=msg.content)]
             ))
 
-        # Configure tools
         config = types.GenerateContentConfig(
             tools=[access_camera, find_object, open_gripper, close_gripper, go_home, pickup_object, place_object, get_robot_pose],
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=False, maximum_remote_calls=5),
@@ -72,20 +69,13 @@ def generate_chat_stream(message: str, history: List[Message]) -> Generator[str,
             """
         )
 
-        # Create chat session
         chat = client.chats.create(model=MODEL_ID, history=chat_history, config=config)
         
-        # Debug: Print enabled tools
         print(f"DEBUG: Sending tools to model: {[t.__name__ for t in [access_camera, find_object, open_gripper, close_gripper, go_home, pickup_object, place_object, get_robot_pose]]}")
         
-        # Send message and stream response
         response = chat.send_message_stream(message)
         
         for chunk in response:
-            # Check if there are function calls in the chunk (if the SDK exposes them in the stream)
-            # The google-genai SDK handles execution automatically, but we can sometimes see the thought process
-            # or partial tool calls if we inspect carefully. 
-            # For now, let's just yield the text.
             if chunk.text:
                 print(f"DEBUG: Chunk text: {chunk.text[:50]}...") # Log first 50 chars
                 yield chunk.text
